@@ -1,9 +1,10 @@
+import json
 import os
 import sys
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
-import requests
 
 GUANGZHOU_LOCATION = "101280101"
 CITY_NAME = "广州"
@@ -21,18 +22,29 @@ def require_env(name: str) -> str:
     return value
 
 
+def http_get_json(url: str, headers: dict[str, str] | None = None) -> dict:
+    request = urllib.request.Request(url, headers=headers or {}, method="GET")
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def http_post_json(url: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def qweather_get(host: str, api_key: str, path: str, params: dict | None = None) -> dict:
-    url = f"https://{host}{path}"
     query = dict(params or {})
     query["location"] = GUANGZHOU_LOCATION
-    response = requests.get(
-        url,
-        params=query,
-        headers={"X-QW-Api-Key": api_key},
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
+    url = f"https://{host}{path}?{urllib.parse.urlencode(query)}"
+    payload = http_get_json(url, headers={"X-QW-Api-Key": api_key})
     if payload.get("code") != "200":
         raise RuntimeError(f"QWeather API error for {path}: {payload}")
     return payload
@@ -176,13 +188,10 @@ def build_message(now: dict, hourly: list[dict], warnings: list[dict], indices: 
 
 
 def send_wecom_markdown(webhook_url: str, content: str) -> None:
-    response = requests.post(
+    payload = http_post_json(
         webhook_url,
-        json={"msgtype": "markdown", "markdown": {"content": content}},
-        timeout=30,
+        {"msgtype": "markdown", "markdown": {"content": content}},
     )
-    response.raise_for_status()
-    payload = response.json()
     if payload.get("errcode") != 0:
         raise RuntimeError(f"WeCom webhook error: {payload}")
 

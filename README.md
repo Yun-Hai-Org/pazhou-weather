@@ -23,11 +23,9 @@
 
 ## 本地试跑
 
-```bash
-uv venv
-source .venv/bin/activate
-uv add requests
+无需安装第三方依赖（Python 3.10+）。
 
+```bash
 export QWEATHER_API_KEY="你的API_KEY"
 export QWEATHER_API_HOST="你的API_HOST"
 export WECOM_WEBHOOK_URL="你的企业微信Webhook"
@@ -46,20 +44,20 @@ git push -u origin main
 
 2. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 中添加：
 
-| Secret | 说明 |
-|--------|------|
-| `QWEATHER_API_KEY` | 和风天气 API Key |
-| `QWEATHER_API_HOST` | 和风天气 API Host |
+| Secret              | 说明                         |
+| ------------------- | ---------------------------- |
+| `QWEATHER_API_KEY`  | 和风天气 API Key             |
+| `QWEATHER_API_HOST` | 和风天气 API Host            |
 | `WECOM_WEBHOOK_URL` | 企业微信群机器人 Webhook URL |
 
 3. 在 **Actions** 页手动运行 `Weather Report` workflow 验证，或等待定时触发。
 
 ## 定时说明
 
-| 北京时间 | UTC cron |
-|----------|----------|
-| 06:00 | `0 22 * * *` |
-| 18:00 | `0 10 * * *` |
+| 北京时间 | UTC cron     |
+| -------- | ------------ |
+| 06:00    | `0 22 * * *` |
+| 18:00    | `0 10 * * *` |
 
 ## 费用
 
