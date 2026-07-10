@@ -8,8 +8,11 @@ import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-GUANGZHOU_LOCATION = "101280101"
-CITY_NAME = "广州"
+# 广州市海珠区（琶洲片区所属行政区）官方 Location ID
+# 说明：免费套餐不含 GeoAPI/POI 接口，无法精确检索"琶洲"POI，
+# 和风天气按坐标反查时自动命中最新区域站点即为海珠区(101280108)。
+GUANGZHOU_LOCATION = "101280108"
+CITY_NAME = "广州·海珠琶洲"
 UMBRELLA_POP_THRESHOLD = 40
 RAIN_KEYWORDS = ("雨", "雪", "雹")
 
@@ -76,6 +79,13 @@ def pop_value(value: str | int | None) -> int:
     return int(value)
 
 
+def parse_wind_scale(s: str) -> int:
+    try:
+        return max(int(x) for x in s.split("-"))
+    except (ValueError, TypeError):
+        return 0
+
+
 def fetch_weather(host: str, api_key: str) -> tuple[dict, list[dict], list[dict], list[dict]]:
     now = qweather_get(host, api_key, "/v7/weather/now")["now"]
     hourly = qweather_get(host, api_key, "/v7/weather/24h")["hourly"]
@@ -93,8 +103,14 @@ def build_next_3h_lines(hourly: list[dict]) -> list[str]:
     lines = []
     for item in hourly[:3]:
         pop = pop_value(item.get("pop"))
+        text = item['text']
+        # 雨天/雪天用对应 emoji 标记
+        if is_rainy_text(text):
+            icon = "🌧️" if "雨" in text else ("❄️" if "雪" in text else "🌨️")
+        else:
+            icon = "☁️" if "云" in text or "阴" in text else "☀️"
         lines.append(
-            f"{format_hour(item['fxTime'])} {item['text']} {item['temp']}°C 降水{pop}%"
+            f"{icon} `{format_hour(item['fxTime'])}`　{text}　**{item['temp']}°C**　💧降水概率 {pop}%"
         )
     return lines
 
@@ -107,32 +123,27 @@ def build_24h_summary(hourly: list[dict]) -> str:
         is_rainy_text(item.get("text", "")) or pop_value(item.get("pop")) >= UMBRELLA_POP_THRESHOLD
         for item in hourly
     )
-    def parse_wind_scale(s: str) -> int:
-        try:
-            return max(int(x) for x in s.split("-"))
-        except (ValueError, TypeError):
-            return 0
 
     wind_scales = [parse_wind_scale(item.get("windScale", "0")) for item in hourly if item.get("windScale")]
     if wind_scales:
-        wind_summary = f"风力{min(wind_scales)}-{max(wind_scales)}级"
+        wind_summary = f"💨 风力 {min(wind_scales)}-{max(wind_scales)} 级"
     else:
-        wind_summary = "风力未知"
-    rain_text = "有雨" if has_rain else "无雨"
-    return f"{min_temp}~{max_temp}°C · {rain_text} · {wind_summary}"
+        wind_summary = "💨 风力未知"
+    rain_text = "🌧️ 有雨" if has_rain else "☀️ 无雨"
+    temp_icon = "🌡️"
+    return f"{temp_icon} **{min_temp}°C ~ {max_temp}°C**　|　{rain_text}　|　{wind_summary}"
 
 
 def build_warning_lines(warnings: list[dict]) -> list[str]:
     if not warnings:
-        return ["无"]
+        return ["✅ 暂无气象预警"]
     lines = []
     for item in warnings:
         title = item.get("title") or item.get("typeName") or "预警"
         level = item.get("level") or item.get("severity") or ""
-        if level:
-            lines.append(f"- {title}（{level}）")
-        else:
-            lines.append(f"- {title}")
+        # 预警等级用颜色色块
+        level_chip = f" `{level}`" if level else ""
+        lines.append(f"> ⚠️　**{title}**{level_chip}")
     return lines
 
 
@@ -147,27 +158,43 @@ def build_umbrella_advice(hourly: list[dict]) -> str:
     next_3h = hourly[:3]
     for item in next_3h:
         if is_rainy_text(item.get("text", "")) or pop_value(item.get("pop")) >= UMBRELLA_POP_THRESHOLD:
-            return "建议带伞（未来3小时降水概率偏高或有雨雪）"
-    return "无需带伞"
+            return "☂️ **建议带伞**（未来 3 小时降水概率偏高或有雨雪）"
+    return "😎 **无需带伞**"
+
+
+_INDEX_ICONS = {
+    "带伞": "☂️",
+    "空调": "❄️",
+    "衣着": "👕",
+    "紫外线": "🔆",
+    "感冒": "🤧",
+}
 
 
 def format_index_line(name: str, item: dict | None) -> str:
+    icon = _INDEX_ICONS.get(name, "•")
     if not item:
-        return f"- {name}：暂无数据"
+        return f"{icon} **{name}**：暂无数据"
     category = item.get("category", "")
     text = item.get("text", "")
     if category and text:
-        return f"- {name}：{category}，{text}"
+        return f"{icon} **{name}**：`{category}`　{text}"
     if category:
-        return f"- {name}：{category}"
-    return f"- {name}：{text or '暂无数据'}"
+        return f"{icon} **{name}**：`{category}`"
+    if text:
+        return f"{icon} **{name}**：{text}"
+    return f"{icon} **{name}**：暂无数据"
 
 
 def build_message(now: dict, hourly: list[dict], warnings: list[dict], indices: list[dict]) -> str:
+    now_text_icon = "🌤️" if "晴" in now['text'] else ("☁️" if "云" in now['text'] or "阴" in now['text'] else "🌧️")
+    feels = now.get("feelsLike")
+    feels_part = f"　|　🤚 体感 **{feels}°C**" if feels else ""
     now_text = (
-        f"**实况** {now['text']} {now['temp']}°C "
-        f"湿度{now.get('humidity', '-')}%% "
-        f"{now.get('windDir', '')}{now.get('windScale', '')}级"
+        f"{now_text_icon} **{now['text']}　{now['temp']}°C**"
+        f"{feels_part}\n"
+        f"　　💧 湿度 **{now.get('humidity', '-')}%**　|　"
+        f"🌬️ {now.get('windDir', '')} **{now.get('windScale', '')}级**"
     )
 
     next_3h = "\n".join(build_next_3h_lines(hourly))
@@ -175,28 +202,37 @@ def build_message(now: dict, hourly: list[dict], warnings: list[dict], indices: 
     warning_lines = build_warning_lines(warnings)
     indexed = index_by_type(indices)
 
+    umbrella_advice = build_umbrella_advice(hourly)
+    if "建议带伞" in umbrella_advice:
+        umbrella_text = "建议带伞（未来 3 小时可能下雨）"
+    else:
+        umbrella_text = "无需带伞"
     life_lines = [
-        f"- 带伞：{build_umbrella_advice(hourly)}",
+        format_index_line("带伞", {"category": "", "text": umbrella_text}),
         format_index_line("空调", indexed.get("11")),
         format_index_line("衣着", indexed.get("3")),
         format_index_line("紫外线", indexed.get("5")),
         format_index_line("感冒", indexed.get("9")),
     ]
 
-    header_time = datetime.now(TZ).strftime("%m-%d %H:%M")
+    header_date = datetime.now(TZ).strftime("%Y-%m-%d")
+    header_time = datetime.now(TZ).strftime("%H:%M")
+    weekday_cn = ["一", "二", "三", "四", "五", "六", "日"][datetime.now(TZ).weekday()]
     warning_text = "\n".join(warning_lines)
     life_text = "\n".join(life_lines)
 
     return (
-        f"## {CITY_NAME}天气 · {header_time}\n"
+        f"## 🌈 {CITY_NAME}天气预报　<font color=\"comment\">{header_date} 周{weekday_cn} {header_time}</font>\n"
         f"{now_text}\n\n"
-        f"**未来3小时**\n"
+        f"#### ⏰ 未来 3 小时\n"
         f"{next_3h}\n\n"
-        f"**未来24小时** {summary_24h}\n\n"
-        f"**预警**\n"
+        f"#### 📅 未来 24 小时\n"
+        f"{summary_24h}\n\n"
+        f"#### 🚨 气象预警\n"
         f"{warning_text}\n\n"
-        f"**生活提醒**\n"
-        f"{life_text}"
+        f"#### 💡 生活提醒\n"
+        f"{life_text}\n\n"
+        f"<font color=\"comment\">— 数据来源：和风天气 · 自动推送 🌦️</font>"
     )
 
 
