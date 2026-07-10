@@ -105,12 +105,38 @@ def fetch_warnings(host: str, api_key: str) -> list[dict[str, Any]]:
     return payload.get("alerts") or []
 
 
-def fetch_weather(host: str, api_key: str) -> tuple[dict, list[dict], list[dict], list[dict]]:
+def fetch_weather(host: str, api_key: str) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     now = qweather_get(host, api_key, "/v7/weather/now")["now"]
     hourly = qweather_get(host, api_key, "/v7/weather/24h")["hourly"]
     warnings = fetch_warnings(host, api_key)
-    indices = qweather_get(host, api_key, "/v7/indices/1d", {"type": "3,5,9,11"}).get("daily", [])
+    indices = qweather_get(host, api_key, "/v7/indices/1d", {"type": "3,5,9,11,1,2,6,8"}).get("daily", [])
     return now, hourly, warnings, indices
+
+
+def fetch_air_quality(host: str, api_key: str) -> dict[str, Any] | None:
+    # 空气质量实况接口（免费全球，1×1 km 分辨率）。
+    # 任一异常均优雅降级：返回 None，不阻断整体推送。
+    try:
+        return qweather_get(host, api_key, "/v7/airquality/now").get("now")
+    except Exception as exc:  # noqa: BLE001 - 网络/接口异常统一降级
+        print(f"⚠️  空气质量接口请求失败（{exc}），跳过")
+        return None
+
+
+def fetch_astronomy(host: str, api_key: str) -> dict[str, Any]:
+    # 天文接口（免费全球）：日出日落 + 月相，按当天日期查询。
+    # 任一接口失败不影响另一接口，整体缺失时返回空 dict，由 build 函数兜底。
+    today = datetime.now(TZ).strftime("%Y-%m-%d")
+    result: dict[str, Any] = {}
+    try:
+        result["sun"] = qweather_get(host, api_key, "/v7/astronomy/sunrise", {"date": today}).get("sunrise", {})
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️  日出日落接口请求失败（{exc}），跳过")
+    try:
+        result["moon"] = qweather_get(host, api_key, "/v7/astronomy/moon", {"date": today}).get("moon", {})
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️  月相接口请求失败（{exc}），跳过")
+    return result
 
 
 def build_next_3h_lines(hourly: list[dict]) -> list[str]:
@@ -206,6 +232,10 @@ _INDEX_ICONS = {
     "衣着": "👕",
     "紫外线": "🔆",
     "感冒": "🤧",
+    "运动": "🏃",
+    "洗车": "🚿",
+    "旅游": "🧳",
+    "舒适度": "🛋️",
 }
 
 
@@ -224,7 +254,59 @@ def format_index_line(name: str, item: dict | None) -> str:
     return f"{icon} **{name}**：暂无数据"
 
 
-def build_message(now: dict, hourly: list[dict], warnings: list[dict], indices: list[dict]) -> str:
+_AQI_ICON = {
+    "优": "🌿",
+    "良": "😊",
+    "轻度污染": "😷",
+    "中度污染": "🤢",
+    "重度污染": "🤮",
+    "严重污染": "☠️",
+}
+
+
+def build_air_quality_lines(aq: dict[str, Any] | None) -> str:
+    if not aq:
+        return "🌫️ 暂无空气质量数据"
+    aqi = aq.get("aqi", "-")
+    category = aq.get("category", "")
+    primary = aq.get("primary", "")
+    primary_text = f"　主要污染物 `{primary}`" if primary and primary != "NA" else ""
+    icon = _AQI_ICON.get(category, "🌫️")
+    line = f"{icon} **AQI {aqi}　{category}**{primary_text}"
+    # 部分套餐返回健康建议（label/strategy 字段），有则附带
+    advice: dict[str, Any] = aq.get("health") or {}
+    advice_text = advice.get("effect") or advice.get("advice") or ""
+    if advice_text:
+        line += f"\n　　🩺 {advice_text}"
+    return line
+
+
+def build_astronomy_lines(astro: dict[str, Any]) -> str:
+    sun: dict[str, Any] = astro.get("sun") or {}
+    moon: dict[str, Any] = astro.get("moon") or {}
+    if not sun and not moon:
+        return "🌌 暂无天文数据"
+    parts: list[str] = []
+    if sun:
+        rise = sun.get("sunrise") or sun.get("rise") or ""
+        set_ = sun.get("sunset") or sun.get("set") or ""
+        if rise and set_:
+            parts.append(f"🌅 日出 {rise} / 日落 {set_}")
+    if moon:
+        phase = moon.get("phase") or moon.get("name") or ""
+        if phase:
+            parts.append(f"🌙 月相 {phase}")
+    return "　".join(parts) if parts else "🌌 暂无天文数据"
+
+
+def build_message(
+    now: dict[str, Any],
+    hourly: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+    indices: list[dict[str, Any]],
+    air_quality: dict[str, Any] | None = None,
+    astronomy: dict[str, Any] | None = None,
+) -> str:
     now_text_icon = "🌤️" if "晴" in now['text'] else ("☁️" if "云" in now['text'] or "阴" in now['text'] else "🌧️")
     feels = now.get("feelsLike")
     feels_part = f"　|　🤚 体感 **{feels}°C**" if feels else ""
@@ -251,6 +333,10 @@ def build_message(now: dict, hourly: list[dict], warnings: list[dict], indices: 
         format_index_line("衣着", indexed.get("3")),
         format_index_line("紫外线", indexed.get("5")),
         format_index_line("感冒", indexed.get("9")),
+        format_index_line("运动", indexed.get("1")),
+        format_index_line("洗车", indexed.get("2")),
+        format_index_line("旅游", indexed.get("6")),
+        format_index_line("舒适度", indexed.get("8")),
     ]
 
     header_date = datetime.now(TZ).strftime("%Y-%m-%d")
@@ -258,6 +344,8 @@ def build_message(now: dict, hourly: list[dict], warnings: list[dict], indices: 
     weekday_cn = ["一", "二", "三", "四", "五", "六", "日"][datetime.now(TZ).weekday()]
     warning_text = "\n".join(warning_lines)
     life_text = "\n".join(life_lines)
+    air_quality_text = build_air_quality_lines(air_quality)
+    astronomy_text = build_astronomy_lines(astronomy or {})
 
     return (
         f"## 🌈 {CITY_NAME}天气预报　<font color=\"comment\">{header_date} 周{weekday_cn} {header_time}</font>\n"
@@ -268,8 +356,11 @@ def build_message(now: dict, hourly: list[dict], warnings: list[dict], indices: 
         f"{summary_24h}\n\n"
         f"#### 🚨 气象预警\n"
         f"{warning_text}\n\n"
+        f"#### 🌫️ 空气质量\n"
+        f"{air_quality_text}\n\n"
         f"#### 💡 生活提醒\n"
         f"{life_text}\n\n"
+        f"{astronomy_text}\n\n"
         f"<font color=\"comment\">— 数据来源：和风天气 · 自动推送 🌦️</font>"
     )
 
@@ -289,7 +380,9 @@ def main() -> None:
     webhook_url = require_env("WECOM_WEBHOOK_URL")
 
     now, hourly, warnings, indices = fetch_weather(api_host, api_key)
-    message = build_message(now, hourly, warnings, indices)
+    air_quality = fetch_air_quality(api_host, api_key)
+    astronomy = fetch_astronomy(api_host, api_key)
+    message = build_message(now, hourly, warnings, indices, air_quality, astronomy)
     send_wecom_markdown(webhook_url, message)
     print("Weather report sent successfully.")
 
