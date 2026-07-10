@@ -125,15 +125,16 @@ def fetch_air_quality(host: str, api_key: str) -> dict[str, Any] | None:
 
 def fetch_astronomy(host: str, api_key: str) -> dict[str, Any]:
     # 天文接口（免费全球）：日出日落 + 月相，按当天日期查询。
+    # 注意：date 必须为 YYYYMMDD（无横线）；日出接口路径为 /v7/astronomy/sun。
     # 任一接口失败不影响另一接口，整体缺失时返回空 dict，由 build 函数兜底。
-    today = datetime.now(TZ).strftime("%Y-%m-%d")
+    today = datetime.now(TZ).strftime("%Y%m%d")
     result: dict[str, Any] = {}
     try:
-        result["sun"] = qweather_get(host, api_key, "/v7/astronomy/sunrise", {"date": today}).get("sunrise", {})
+        result["sun"] = qweather_get(host, api_key, "/v7/astronomy/sun", {"date": today})
     except Exception as exc:  # noqa: BLE001
         print(f"⚠️  日出日落接口请求失败（{exc}），跳过")
     try:
-        result["moon"] = qweather_get(host, api_key, "/v7/astronomy/moon", {"date": today}).get("moon", {})
+        result["moon"] = qweather_get(host, api_key, "/v7/astronomy/moon", {"date": today})
     except Exception as exc:  # noqa: BLE001
         print(f"⚠️  月相接口请求失败（{exc}），跳过")
     return result
@@ -282,20 +283,27 @@ def build_air_quality_lines(aq: dict[str, Any] | None) -> str:
 
 
 def build_astronomy_lines(astro: dict[str, Any]) -> str:
+    # astro 为 fetch_astronomy 返回的顶层响应（可能含 sun / moon 两段）。
     sun: dict[str, Any] = astro.get("sun") or {}
     moon: dict[str, Any] = astro.get("moon") or {}
     if not sun and not moon:
         return "🌌 暂无天文数据"
     parts: list[str] = []
     if sun:
-        rise = sun.get("sunrise") or sun.get("rise") or ""
-        set_ = sun.get("sunset") or sun.get("set") or ""
+        rise = format_hour(sun.get("sunrise", "")) if sun.get("sunrise") else ""
+        set_ = format_hour(sun.get("sunset", "")) if sun.get("sunset") else ""
         if rise and set_:
             parts.append(f"🌅 日出 {rise} / 日落 {set_}")
     if moon:
-        phase = moon.get("phase") or moon.get("name") or ""
-        if phase:
-            parts.append(f"🌙 月相 {phase}")
+        # moonPhase 为按小时数组，取当日第一个有效相位的名称；无数组则退化为顶层字段。
+        phase_name = ""
+        phase_list: list[dict[str, Any]] = moon.get("moonPhase") or []
+        if phase_list:
+            phase_name = phase_list[0].get("name", "")
+        else:
+            phase_name = moon.get("name") or moon.get("phase") or ""
+        if phase_name:
+            parts.append(f"🌙 月相 {phase_name}")
     return "　".join(parts) if parts else "🌌 暂无天文数据"
 
 
