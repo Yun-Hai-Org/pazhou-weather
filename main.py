@@ -1,6 +1,8 @@
+import gzip
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -25,7 +27,10 @@ def require_env(name: str) -> str:
 def http_get_json(url: str, headers: dict[str, str] | None = None) -> dict:
     request = urllib.request.Request(url, headers=headers or {}, method="GET")
     with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+        raw = response.read()
+        if response.headers.get("Content-Encoding") == "gzip":
+            raw = gzip.decompress(raw)
+        return json.loads(raw.decode("utf-8"))
 
 
 def http_post_json(url: str, payload: dict) -> dict:
@@ -71,14 +76,13 @@ def pop_value(value: str | int | None) -> int:
 def fetch_weather(host: str, api_key: str) -> tuple[dict, list[dict], list[dict], list[dict]]:
     now = qweather_get(host, api_key, "/v7/weather/now")["now"]
     hourly = qweather_get(host, api_key, "/v7/weather/24h")["hourly"]
-    warning_payload = qweather_get(host, api_key, "/v7/warning/now")
-    warnings = warning_payload.get("warning") or []
-    indices = qweather_get(
-        host,
-        api_key,
-        "/v7/indices/1d",
-        {"type": "3,5,9,11"},
-    ).get("daily", [])
+    try:
+        warning_payload = qweather_get(host, api_key, "/v7/warning/now")
+        warnings = warning_payload.get("warning") or []
+    except (RuntimeError, urllib.error.HTTPError):
+        print("⚠️  预警接口不可用（需要付费套餐），跳过")
+        warnings = []
+    indices = qweather_get(host, api_key, "/v7/indices/1d", {"type": "3,5,9,11"}).get("daily", [])
     return now, hourly, warnings, indices
 
 
@@ -100,7 +104,13 @@ def build_24h_summary(hourly: list[dict]) -> str:
         is_rainy_text(item.get("text", "")) or pop_value(item.get("pop")) >= UMBRELLA_POP_THRESHOLD
         for item in hourly
     )
-    wind_scales = [int(item.get("windScale", "0")) for item in hourly if item.get("windScale")]
+    def parse_wind_scale(s: str) -> int:
+        try:
+            return max(int(x) for x in s.split("-"))
+        except (ValueError, TypeError):
+            return 0
+
+    wind_scales = [parse_wind_scale(item.get("windScale", "0")) for item in hourly if item.get("windScale")]
     if wind_scales:
         wind_summary = f"风力{min(wind_scales)}-{max(wind_scales)}级"
     else:
