@@ -28,7 +28,10 @@ def http_get_json(url: str, headers: dict[str, str] | None = None) -> dict:
     request = urllib.request.Request(url, headers=headers or {}, method="GET")
     with urllib.request.urlopen(request, timeout=30) as response:
         raw = response.read()
-        if response.headers.get("Content-Encoding") == "gzip":
+        encoding = (response.headers.get("Content-Encoding") or "").lower()
+        # QWeather may return gzip even when urllib didn't advertise it; also
+        # guard against a missing/uppercase header by sniffing the gzip magic bytes.
+        if encoding == "gzip" or raw[:2] == b"\x1f\x8b":
             raw = gzip.decompress(raw)
         return json.loads(raw.decode("utf-8"))
 
