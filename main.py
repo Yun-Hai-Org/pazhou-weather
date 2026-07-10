@@ -1,6 +1,7 @@
 import gzip
 import json
 import os
+from typing import Any
 import sys
 import urllib.error
 import urllib.parse
@@ -12,6 +13,8 @@ from zoneinfo import ZoneInfo
 # 说明：免费套餐不含 GeoAPI/POI 接口，无法精确检索"琶洲"POI，
 # 和风天气按坐标反查时自动命中最新区域站点即为海珠区(101280108)。
 GUANGZHOU_LOCATION = "101280108"
+# 经纬度坐标，供新版预警接口 /weatheralert/v1/current/{lat}/{lon} 使用（经度,纬度）
+GUANGZHOU_COORDS = "113.384,23.101"
 CITY_NAME = "广州·海珠琶洲"
 UMBRELLA_POP_THRESHOLD = 40
 RAIN_KEYWORDS = ("雨", "雪", "雹")
@@ -51,7 +54,7 @@ def http_post_json(url: str, payload: dict) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def qweather_get(host: str, api_key: str, path: str, params: dict | None = None) -> dict:
+def qweather_get(host: str, api_key: str, path: str, params: dict | None = None) -> dict[str, Any]:
     query = dict(params or {})
     query["location"] = GUANGZHOU_LOCATION
     url = f"https://{host}{path}?{urllib.parse.urlencode(query)}"
@@ -86,15 +89,26 @@ def parse_wind_scale(s: str) -> int:
         return 0
 
 
+def fetch_warnings(host: str, api_key: str) -> list[dict[str, Any]]:
+    # 新版预警接口 /weatheralert/v1/current/{lat}/{lon}（含中国及全球预警）。
+    # 旧接口 /v7/warning/now 已被官方弃用，且本账户无访问权限（HTTP 403），故迁移至此。
+    lon, lat = GUANGZHOU_COORDS.split(",")
+    url = f"https://{host}/weatheralert/v1/current/{lat}/{lon}?lang=zh"
+    try:
+        payload = http_get_json(url, headers={"X-QW-Api-Key": api_key})
+    except urllib.error.HTTPError as exc:
+        print(f"⚠️  预警接口请求失败（HTTP {exc.code}），跳过")
+        return []
+    if "alerts" not in payload:
+        print("⚠️  预警接口返回异常，跳过")
+        return []
+    return payload.get("alerts") or []
+
+
 def fetch_weather(host: str, api_key: str) -> tuple[dict, list[dict], list[dict], list[dict]]:
     now = qweather_get(host, api_key, "/v7/weather/now")["now"]
     hourly = qweather_get(host, api_key, "/v7/weather/24h")["hourly"]
-    try:
-        warning_payload = qweather_get(host, api_key, "/v7/warning/now")
-        warnings = warning_payload.get("warning") or []
-    except (RuntimeError, urllib.error.HTTPError):
-        print("⚠️  预警接口不可用（需要付费套餐），跳过")
-        warnings = []
+    warnings = fetch_warnings(host, api_key)
     indices = qweather_get(host, api_key, "/v7/indices/1d", {"type": "3,5,9,11"}).get("daily", [])
     return now, hourly, warnings, indices
 
@@ -134,16 +148,40 @@ def build_24h_summary(hourly: list[dict]) -> str:
     return f"{temp_icon} **{min_temp}°C ~ {max_temp}°C**　|　{rain_text}　|　{wind_summary}"
 
 
-def build_warning_lines(warnings: list[dict]) -> list[str]:
+_SEVERITY_LABEL = {
+    "extreme": "红色",
+    "severe": "橙色",
+    "moderate": "黄色",
+    "minor": "蓝色",
+    "unknown": "未知",
+}
+_COLOR_LABEL = {
+    "red": "红色",
+    "orange": "橙色",
+    "yellow": "黄色",
+    "blue": "蓝色",
+}
+
+
+def format_warning_level(item: dict[str, Any]) -> str:
+    color = (item.get("color") or {}).get("code", "")
+    if color:
+        return _COLOR_LABEL.get(color, color)
+    return _SEVERITY_LABEL.get(item.get("severity", ""), "")
+
+
+def build_warning_lines(warnings: list[dict[str, Any]]) -> list[str]:
     if not warnings:
         return ["✅ 暂无气象预警"]
     lines = []
     for item in warnings:
-        title = item.get("title") or item.get("typeName") or "预警"
-        level = item.get("level") or item.get("severity") or ""
+        title = item.get("headLine") or item.get("headline") or "预警"
+        event = (item.get("eventType") or {}).get("name", "")
+        level = format_warning_level(item)
         # 预警等级用颜色色块
         level_chip = f" `{level}`" if level else ""
-        lines.append(f"> ⚠️　**{title}**{level_chip}")
+        event_chip = f"【{event}】" if event else ""
+        lines.append(f"> ⚠️　{event_chip}**{title}**{level_chip}")
     return lines
 
 
