@@ -140,9 +140,9 @@ def fetch_astronomy(host: str, api_key: str) -> dict[str, Any]:
     return result
 
 
-def build_next_3h_lines(hourly: list[dict]) -> list[str]:
+def build_next_6h_lines(hourly: list[dict]) -> list[str]:
     lines = []
-    for item in hourly[:3]:
+    for item in hourly[:6]:
         pop = pop_value(item.get("pop"))
         text = item['text']
         # 雨天/雪天用对应 emoji 标记
@@ -220,10 +220,10 @@ def index_by_type(indices: list[dict]) -> dict[str, dict]:
 
 
 def build_umbrella_advice(hourly: list[dict]) -> str:
-    next_3h = hourly[:3]
-    for item in next_3h:
+    next_6h = hourly[:6]
+    for item in next_6h:
         if is_rainy_text(item.get("text", "")) or pop_value(item.get("pop")) >= UMBRELLA_POP_THRESHOLD:
-            return "☂️ **建议带伞**（未来 3 小时降水概率偏高或有雨雪）"
+            return "☂️ **建议带伞**（未来 6 小时降水概率偏高或有雨雪）"
     return "😎 **无需带伞**"
 
 
@@ -325,14 +325,14 @@ def build_message(
         f"🌬️ {now.get('windDir', '')} **{now.get('windScale', '')}级**"
     )
 
-    next_3h = "\n".join(build_next_3h_lines(hourly))
+    next_6h = "\n".join(build_next_6h_lines(hourly))
     summary_24h = build_24h_summary(hourly)
     warning_lines = build_warning_lines(warnings)
     indexed = index_by_type(indices)
 
     umbrella_advice = build_umbrella_advice(hourly)
     if "建议带伞" in umbrella_advice:
-        umbrella_text = "建议带伞（未来 3 小时可能下雨）"
+        umbrella_text = "建议带伞（未来 6 小时可能下雨）"
     else:
         umbrella_text = "无需带伞"
     life_lines = [
@@ -358,8 +358,8 @@ def build_message(
     return (
         f"## 🌈 {CITY_NAME}天气预报　<font color=\"comment\">{header_date} 周{weekday_cn} {header_time}</font>\n"
         f"{now_text}\n\n"
-        f"#### ⏰ 未来 3 小时\n"
-        f"{next_3h}\n\n"
+        f"#### ⏰ 未来 6 小时\n"
+        f"{next_6h}\n\n"
         f"#### 📅 未来 24 小时\n"
         f"{summary_24h}\n\n"
         f"#### 🚨 气象预警\n"
