@@ -369,7 +369,6 @@ def build_message(
         f"#### 💡 生活提醒\n"
         f"{life_text}\n\n"
         f"{astronomy_text}\n\n"
-        f"<font color=\"comment\">— 数据来源：和风天气 · 自动推送 🌦️</font>"
     )
 
 
