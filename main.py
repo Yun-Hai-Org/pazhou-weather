@@ -263,7 +263,10 @@ _COLOR_LABEL = {
 def format_warning_level(item: dict[str, Any]) -> str:
     color = (item.get("color") or {}).get("code", "")
     if color:
-        return _COLOR_LABEL.get(color, color)
+        # 仅识别红/橙/黄/蓝四种官方标准预警色；其余颜色码（如"提醒"类预警常见的
+        # gray/white 等非定级色）不在色卡内，不应把和风天气返回的原始英文 code
+        # 泄露到用户可见文案中，因此 fallback 为空字符串（不展示色块 chip）。
+        return _COLOR_LABEL.get(color, "")
     return _SEVERITY_LABEL.get(item.get("severity", ""), "")
 
 
