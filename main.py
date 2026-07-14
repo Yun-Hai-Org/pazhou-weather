@@ -132,13 +132,22 @@ def fetch_weather(host: str, api_key: str) -> tuple[dict[str, Any], list[dict[st
 
 
 def fetch_air_quality(host: str, api_key: str) -> dict[str, Any] | None:
-    # 空气质量实况接口（免费全球，1×1 km 分辨率）。
-    # 任一异常均优雅降级：返回 None，不阻断整体推送。
+    # 新版全球空气质量接口 /airquality/v1/current/{lat}/{lon}（1×1 km 分辨率）。
+    # 旧接口 /v7/airquality/now 已在网关下线（HTTP 404，空 body），故迁移至此，
+    # 与 fetch_warnings 的预警接口迁移同理。
+    # 响应结构与旧版不同：多标准指数在 indexes[] 数组中，优先取中国标准 cn-mee。
+    lon, lat = GUANGZHOU_COORDS.split(",")
+    url = f"https://{host}/airquality/v1/current/{lat}/{lon}?lang=zh"
     try:
-        return qweather_get(host, api_key, "/v7/airquality/now").get("now")
+        payload = http_get_json(url, headers={"X-QW-Api-Key": api_key})
     except Exception as exc:  # noqa: BLE001 - 网络/接口异常统一降级
         print(f"⚠️  空气质量接口请求失败（{exc}），跳过")
         return None
+    indexes: list[dict[str, Any]] = payload.get("indexes") or []
+    if not indexes:
+        print("⚠️  空气质量接口返回异常，跳过")
+        return None
+    return next((item for item in indexes if item.get("code") == "cn-mee"), indexes[0])
 
 
 def fetch_astronomy(host: str, api_key: str) -> dict[str, Any]:
@@ -283,18 +292,34 @@ _AQI_ICON = {
 }
 
 
+_POLLUTANT_LABEL = {
+    "pm2p5": "PM2.5",
+    "pm10": "PM10",
+    "no2": "NO2",
+    "o3": "O3",
+    "so2": "SO2",
+    "co": "CO",
+}
+
+
 def build_air_quality_lines(aq: dict[str, Any] | None) -> str:
     if not aq:
         return "🌫️ 暂无空气质量数据"
     aqi = aq.get("aqi", "-")
     category = aq.get("category", "")
-    primary = aq.get("primary", "")
-    primary_text = f"　主要污染物 `{primary}`" if primary and primary != "NA" else ""
+    # 新版接口字段为 primaryPollutant（污染物代码，如 "pm2p5"），无主要污染物时为 None。
+    primary = aq.get("primaryPollutant") or ""
+    primary_label = _POLLUTANT_LABEL.get(primary, primary.upper()) if primary else ""
+    primary_text = f"　主要污染物 `{primary_label}`" if primary_label else ""
     icon = _AQI_ICON.get(category, "🌫️")
     line = f"{icon} **AQI {aqi}　{category}**{primary_text}"
-    # 部分套餐返回健康建议（label/strategy 字段），有则附带
-    advice: dict[str, Any] = aq.get("health") or {}
-    advice_text = advice.get("effect") or advice.get("advice") or ""
+    # 健康建议：effect 为综合描述（字符串）；advice 为分人群建议（字典），取通用人群建议兜底。
+    health: dict[str, Any] = aq.get("health") or {}
+    advice_text = health.get("effect") or ""
+    if not advice_text:
+        advice = health.get("advice")
+        if isinstance(advice, dict):
+            advice_text = advice.get("generalPopulation") or ""
     if advice_text:
         line += f"\n　　🩺 {advice_text}"
     return line
