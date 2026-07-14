@@ -1,6 +1,7 @@
 import gzip
 import json
 import os
+import re
 from typing import Any
 import sys
 import urllib.error
@@ -28,6 +29,23 @@ def require_env(name: str) -> str:
         print(f"Missing environment variable: {name}", file=sys.stderr)
         sys.exit(1)
     return value
+
+
+def parse_webhook_urls(raw: str) -> list[str]:
+    """解析 WECOM_WEBHOOK_URL，支持配置多个企业微信 Webhook。
+
+    多个地址之间用英文逗号、英文分号或换行分隔，例如：
+        WECOM_WEBHOOK_URL="https://qyapi.../key=aaa,https://qyapi.../key=bbb"
+    自动去除空白项与重复项，保持原有顺序。
+    """
+    urls = [u.strip() for u in re.split(r"[,;\n]+", raw) if u.strip()]
+    seen: set[str] = set()
+    unique_urls: list[str] = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique_urls.append(url)
+    return unique_urls
 
 
 def http_get_json(url: str, headers: dict[str, str] | None = None) -> dict:
@@ -372,6 +390,17 @@ def build_message(
     )
 
 
+def mask_webhook_url(url: str) -> str:
+    """日志脱敏：仅保留 Webhook key 首尾少量字符，避免泄露完整密钥。"""
+    parsed = urllib.parse.urlparse(url)
+    query = urllib.parse.parse_qs(parsed.query)
+    key = (query.get("key") or [""])[0]
+    if not key:
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    masked_key = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "*" * len(key)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?key={masked_key}"
+
+
 def send_wecom_markdown(webhook_url: str, content: str) -> None:
     payload = http_post_json(
         webhook_url,
@@ -381,17 +410,39 @@ def send_wecom_markdown(webhook_url: str, content: str) -> None:
         raise RuntimeError(f"WeCom webhook error: {payload}")
 
 
+def send_wecom_markdown_all(webhook_urls: list[str], content: str) -> None:
+    """向多个企业微信 Webhook 推送同样的消息。
+
+    单个 Webhook 推送失败不会中断其它 Webhook 的推送；全部尝试完成后，
+    若存在失败项则汇总抛出异常，便于 CI/终端感知问题。
+    """
+    errors: list[str] = []
+    for index, url in enumerate(webhook_urls, start=1):
+        masked = mask_webhook_url(url)
+        try:
+            send_wecom_markdown(url, content)
+            print(f"✅ 已发送至企业微信 #{index}（{masked}）")
+        except Exception as exc:  # noqa: BLE001 - 汇总后统一报错，不因单个失败中断其他推送
+            print(f"❌ 发送至企业微信 #{index}（{masked}）失败：{exc}", file=sys.stderr)
+            errors.append(f"#{index} {masked}: {exc}")
+    if errors:
+        raise RuntimeError("部分企业微信推送失败：\n" + "\n".join(errors))
+
+
 def main() -> None:
     api_key = require_env("QWEATHER_API_KEY")
     api_host = require_env("QWEATHER_API_HOST")
-    webhook_url = require_env("WECOM_WEBHOOK_URL")
+    webhook_urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL"))
+    if not webhook_urls:
+        print("Missing environment variable: WECOM_WEBHOOK_URL", file=sys.stderr)
+        sys.exit(1)
 
     now, hourly, warnings, indices = fetch_weather(api_host, api_key)
     air_quality = fetch_air_quality(api_host, api_key)
     astronomy = fetch_astronomy(api_host, api_key)
     message = build_message(now, hourly, warnings, indices, air_quality, astronomy)
-    send_wecom_markdown(webhook_url, message)
-    print("Weather report sent successfully.")
+    send_wecom_markdown_all(webhook_urls, message)
+    print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
 
 
 if __name__ == "__main__":

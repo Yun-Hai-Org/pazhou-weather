@@ -20,6 +20,14 @@
 
 1. 在企业微信群中添加「自定义机器人」
 2. 复制完整的 Webhook URL
+3. 如需同时推送到多个群/多个机器人，将多个 Webhook URL 用英文逗号（`,`）拼接在同一个
+   `WECOM_WEBHOOK_URL` 中即可，例如：
+
+   ```bash
+   WECOM_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=aaa,https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=bbb"
+   ```
+
+   程序会依次向每个地址推送同样的天气播报内容；单个地址推送失败不影响其他地址。
 
 ## 本地试跑
 
@@ -48,7 +56,7 @@ git push -u origin main
 | ------------------- | ---------------------------- |
 | `QWEATHER_API_KEY`  | 和风天气 API Key             |
 | `QWEATHER_API_HOST` | 和风天气 API Host            |
-| `WECOM_WEBHOOK_URL` | 企业微信群机器人 Webhook URL |
+| `WECOM_WEBHOOK_URL` | 企业微信群机器人 Webhook URL（多个用英文逗号分隔） |
 
 3. 在 **Actions** 页手动运行 `Weather Report` workflow 验证，或等待定时触发。
 
