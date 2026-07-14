@@ -127,8 +127,22 @@ def fetch_weather(host: str, api_key: str) -> tuple[dict[str, Any], list[dict[st
     now = qweather_get(host, api_key, "/v7/weather/now")["now"]
     hourly = qweather_get(host, api_key, "/v7/weather/24h")["hourly"]
     warnings = fetch_warnings(host, api_key)
-    indices = qweather_get(host, api_key, "/v7/indices/1d", {"type": "3,5,9,11,1,2,6,8"}).get("daily", [])
+    # 指数类型：1 运动 3 穿衣 5 紫外线 6 旅游 8 舒适度 9 感冒 11 空调开启
+    # 10 空气污染扩散条件 14 晾晒 15 交通 16 防晒
+    indices = qweather_get(
+        host, api_key, "/v7/indices/1d", {"type": "1,3,5,6,8,9,10,11,14,15,16"}
+    ).get("daily", [])
     return now, hourly, warnings, indices
+
+
+def fetch_3d_forecast(host: str, api_key: str) -> list[dict[str, Any]]:
+    # 3 天预报接口（免费，含未来 3 天逐日最高/最低温、白天/夜间天气、降水量等）。
+    # 任一异常均优雅降级：返回空列表，不阻断整体推送。
+    try:
+        return qweather_get(host, api_key, "/v7/weather/3d").get("daily", [])
+    except Exception as exc:  # noqa: BLE001 - 网络/接口异常统一降级
+        print(f"⚠️  3 天预报接口请求失败（{exc}），跳过")
+        return []
 
 
 def fetch_air_quality(host: str, api_key: str) -> dict[str, Any] | None:
@@ -202,6 +216,35 @@ def build_24h_summary(hourly: list[dict]) -> str:
     return f"{temp_icon} **{min_temp}°C ~ {max_temp}°C**　|　{rain_text}　|　{wind_summary}"
 
 
+_WEEKDAY_CN = ["一", "二", "三", "四", "五", "六", "日"]
+
+
+def format_day_label(fx_date: str, index: int) -> str:
+    if index == 0:
+        return "今天"
+    if index == 1:
+        return "明天"
+    weekday = datetime.fromisoformat(fx_date).weekday()
+    return f"周{_WEEKDAY_CN[weekday]}"
+
+
+def build_3d_forecast_lines(daily: list[dict[str, Any]]) -> str:
+    if not daily:
+        return "🌫️ 暂无 3 天预报数据"
+    lines = []
+    for index, item in enumerate(daily):
+        text_day = item.get("textDay", "")
+        icon = "🌧️" if is_rainy_text(text_day) else ("☁️" if "云" in text_day or "阴" in text_day else "☀️")
+        label = format_day_label(item.get("fxDate", ""), index)
+        precip = item.get("precip")
+        precip_text = f"　💧 {precip}mm" if precip and float(precip) > 0 else ""
+        lines.append(
+            f"{icon} `{label}`　{text_day}　"
+            f"**{item.get('tempMin', '-')}~{item.get('tempMax', '-')}°C**{precip_text}"
+        )
+    return "\n".join(lines)
+
+
 _SEVERITY_LABEL = {
     "extreme": "红色",
     "severe": "橙色",
@@ -261,9 +304,12 @@ _INDEX_ICONS = {
     "紫外线": "🔆",
     "感冒": "🤧",
     "运动": "🏃",
-    "洗车": "🚿",
     "旅游": "🧳",
     "舒适度": "🛋️",
+    "晾晒": "👔",
+    "防晒": "🧴",
+    "交通": "🚗",
+    "空气扩散": "🌬️",
 }
 
 
@@ -357,6 +403,7 @@ def build_message(
     indices: list[dict[str, Any]],
     air_quality: dict[str, Any] | None = None,
     astronomy: dict[str, Any] | None = None,
+    forecast_3d: list[dict[str, Any]] | None = None,
 ) -> str:
     now_text_icon = "🌤️" if "晴" in now['text'] else ("☁️" if "云" in now['text'] or "阴" in now['text'] else "🌧️")
     feels = now.get("feelsLike")
@@ -385,9 +432,12 @@ def build_message(
         format_index_line("紫外线", indexed.get("5")),
         format_index_line("感冒", indexed.get("9")),
         format_index_line("运动", indexed.get("1")),
-        format_index_line("洗车", indexed.get("2")),
         format_index_line("旅游", indexed.get("6")),
         format_index_line("舒适度", indexed.get("8")),
+        format_index_line("晾晒", indexed.get("14")),
+        format_index_line("防晒", indexed.get("16")),
+        format_index_line("交通", indexed.get("15")),
+        format_index_line("空气扩散", indexed.get("10")),
     ]
 
     header_date = datetime.now(TZ).strftime("%Y-%m-%d")
@@ -397,6 +447,7 @@ def build_message(
     life_text = "\n".join(life_lines)
     air_quality_text = build_air_quality_lines(air_quality)
     astronomy_text = build_astronomy_lines(astronomy or {})
+    forecast_3d_text = build_3d_forecast_lines(forecast_3d or [])
 
     return (
         f"## 🌈 {CITY_NAME}天气预报　<font color=\"comment\">{header_date} 周{weekday_cn} {header_time}</font>\n"
@@ -405,13 +456,15 @@ def build_message(
         f"{next_6h}\n\n"
         f"#### 📅 未来 24 小时\n"
         f"{summary_24h}\n\n"
+        f"#### 🗓️ 未来 3 天\n"
+        f"{forecast_3d_text}\n\n"
         f"#### 🚨 气象预警\n"
         f"{warning_text}\n\n"
         f"#### 🌫️ 空气质量\n"
         f"{air_quality_text}\n\n"
+        f"{astronomy_text}\n\n"
         f"#### 💡 生活提醒\n"
         f"{life_text}\n\n"
-        f"{astronomy_text}\n\n"
     )
 
 
@@ -465,7 +518,8 @@ def main() -> None:
     now, hourly, warnings, indices = fetch_weather(api_host, api_key)
     air_quality = fetch_air_quality(api_host, api_key)
     astronomy = fetch_astronomy(api_host, api_key)
-    message = build_message(now, hourly, warnings, indices, air_quality, astronomy)
+    forecast_3d = fetch_3d_forecast(api_host, api_key)
+    message = build_message(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d)
     send_wecom_markdown_all(webhook_urls, message)
     print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
 
