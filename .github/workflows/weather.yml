@@ -2,8 +2,8 @@ name: Weather Report
 
 on:
   schedule:
-    - cron: "0 21 * * *"
-    - cron: "0 8 * * *"
+    - cron: "45 20 * * *"
+    - cron: "45 7 * * *"
   workflow_dispatch:
 
 jobs:
