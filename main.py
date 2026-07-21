@@ -181,21 +181,6 @@ def fetch_astronomy(host: str, api_key: str) -> dict[str, Any]:
     return result
 
 
-def build_next_6h_lines(hourly: list[dict]) -> list[str]:
-    lines = []
-    for item in hourly[:6]:
-        pop = pop_value(item.get("pop"))
-        text = item['text']
-        # 雨天/雪天用对应 emoji 标记
-        if is_rainy_text(text):
-            icon = "🌧️" if "雨" in text else ("❄️" if "雪" in text else "🌨️")
-        else:
-            icon = "☁️" if "云" in text or "阴" in text else "☀️"
-        lines.append(
-            f"{icon} `{format_hour(item['fxTime'])}`　{text}　**{item['temp']}°C**　💧降水概率 {pop}%"
-        )
-    return lines
-
 
 def build_24h_summary(hourly: list[dict]) -> str:
     temps = [int(item["temp"]) for item in hourly]
@@ -228,37 +213,6 @@ def format_day_label(fx_date: str, index: int) -> str:
     return f"周{_WEEKDAY_CN[weekday]}"
 
 
-def build_3d_forecast_lines(daily: list[dict[str, Any]]) -> str:
-    if not daily:
-        return "🌫️ 暂无 3 天预报数据"
-    lines = []
-    for index, item in enumerate(daily):
-        text_day = item.get("textDay", "")
-        icon = "🌧️" if is_rainy_text(text_day) else ("☁️" if "云" in text_day or "阴" in text_day else "☀️")
-        label = format_day_label(item.get("fxDate", ""), index)
-        precip = item.get("precip")
-        precip_text = f"　💧 {precip}mm" if precip and float(precip) > 0 else ""
-        lines.append(
-            f"{icon} `{label}`　{text_day}　"
-            f"**{item.get('tempMin', '-')}~{item.get('tempMax', '-')}°C**{precip_text}"
-        )
-    return "\n".join(lines)
-
-
-_SEVERITY_LABEL = {
-    "extreme": "红色",
-    "severe": "橙色",
-    "moderate": "黄色",
-    "minor": "蓝色",
-    "unknown": "未知",
-}
-_COLOR_LABEL = {
-    "red": "红色",
-    "orange": "橙色",
-    "yellow": "黄色",
-    "blue": "蓝色",
-}
-
 
 def format_warning_level(item: dict[str, Any]) -> str:
     color = (item.get("color") or {}).get("code", "")
@@ -269,20 +223,6 @@ def format_warning_level(item: dict[str, Any]) -> str:
         return _COLOR_LABEL.get(color, "")
     return _SEVERITY_LABEL.get(item.get("severity", ""), "")
 
-
-def build_warning_lines(warnings: list[dict[str, Any]]) -> list[str]:
-    if not warnings:
-        return ["✅ 暂无气象预警"]
-    lines = []
-    for item in warnings:
-        title = item.get("headLine") or item.get("headline") or "预警"
-        event = (item.get("eventType") or {}).get("name", "")
-        level = format_warning_level(item)
-        # 预警等级用颜色色块
-        level_chip = f" `{level}`" if level else ""
-        event_chip = f"【{event}】" if event else ""
-        lines.append(f"> ⚠️　{event_chip}**{title}**{level_chip}")
-    return lines
 
 
 def index_by_type(indices: list[dict]) -> dict[str, dict]:
@@ -300,78 +240,6 @@ def build_umbrella_advice(hourly: list[dict]) -> str:
     return "😎 **无需带伞**"
 
 
-_INDEX_ICONS = {
-    "带伞": "☂️",
-    "空调": "❄️",
-    "衣着": "👕",
-    "紫外线": "🔆",
-    "感冒": "🤧",
-    "运动": "🏃",
-    "旅游": "🧳",
-    "舒适度": "🛋️",
-    "晾晒": "👔",
-    "防晒": "🧴",
-    "交通": "🚗",
-    "空气扩散": "🌬️",
-}
-
-
-def format_index_line(name: str, item: dict | None) -> str:
-    icon = _INDEX_ICONS.get(name, "•")
-    if not item:
-        return f"{icon} **{name}**：暂无数据"
-    category = item.get("category", "")
-    text = item.get("text", "")
-    if category and text:
-        return f"{icon} **{name}**：`{category}`　{text}"
-    if category:
-        return f"{icon} **{name}**：`{category}`"
-    if text:
-        return f"{icon} **{name}**：{text}"
-    return f"{icon} **{name}**：暂无数据"
-
-
-_AQI_ICON = {
-    "优": "🌿",
-    "良": "😊",
-    "轻度污染": "😷",
-    "中度污染": "🤢",
-    "重度污染": "🤮",
-    "严重污染": "☠️",
-}
-
-
-_POLLUTANT_LABEL = {
-    "pm2p5": "PM2.5",
-    "pm10": "PM10",
-    "no2": "NO2",
-    "o3": "O3",
-    "so2": "SO2",
-    "co": "CO",
-}
-
-
-def build_air_quality_lines(aq: dict[str, Any] | None) -> str:
-    if not aq:
-        return "🌫️ 暂无空气质量数据"
-    aqi = aq.get("aqi", "-")
-    category = aq.get("category", "")
-    # 新版接口字段为 primaryPollutant（污染物代码，如 "pm2p5"），无主要污染物时为 None。
-    primary = aq.get("primaryPollutant") or ""
-    primary_label = _POLLUTANT_LABEL.get(primary, primary.upper()) if primary else ""
-    primary_text = f"　主要污染物 `{primary_label}`" if primary_label else ""
-    icon = _AQI_ICON.get(category, "🌫️")
-    line = f"{icon} **AQI {aqi}　{category}**{primary_text}"
-    # 健康建议：effect 为综合描述（字符串）；advice 为分人群建议（字典），取通用人群建议兜底。
-    health: dict[str, Any] = aq.get("health") or {}
-    advice_text = health.get("effect") or ""
-    if not advice_text:
-        advice = health.get("advice")
-        if isinstance(advice, dict):
-            advice_text = advice.get("generalPopulation") or ""
-    if advice_text:
-        line += f"\n　　🩺 {advice_text}"
-    return line
 
 
 def build_astronomy_lines(astro: dict[str, Any]) -> str:
@@ -406,27 +274,87 @@ def truncate_text(text: str, max_len: int) -> str:
     return text[: max_len - 1] + "…"
 
 
-def build_compact_6h(hourly: list[dict]) -> str:
-    parts: list[str] = []
+def weather_icon_url(icon_code: str | None) -> str:
+    code = icon_code or "100"
+    return f"https://icons.qweather.com/assets/icons/{code}.png"
+
+
+def weather_emoji(text: str) -> str:
+    if "雷" in text:
+        return "⛈️"
+    if is_rainy_text(text):
+        if "雪" in text:
+            return "❄️"
+        if "雹" in text:
+            return "🌨️"
+        return "🌧️"
+    if "雾" in text or "霾" in text:
+        return "🌫️"
+    if "云" in text or "阴" in text:
+        return "☁️"
+    return "☀️"
+
+
+def build_hourly_vertical(hourly: list[dict], max_len: int = 128) -> str:
+    lines: list[str] = []
     for item in hourly[:6]:
+        fx_time = item.get("fxTime", "")
+        if not fx_time:
+            continue
         pop = pop_value(item.get("pop"))
-        text = item.get("text", "")
-        rain_mark = "*" if is_rainy_text(text) or pop >= UMBRELLA_POP_THRESHOLD else ""
-        parts.append(f"{format_hour(item['fxTime'])} {text} {item['temp']}°C{rain_mark}")
-    return " · ".join(parts)
+        weather_text = item.get("text", "")
+        line = (
+            f"{format_hour(fx_time)} {weather_emoji(weather_text)}{weather_text} "
+            f"{item.get('temp', '-')}°C {pop}%"
+        )
+        candidate = "\n".join(lines + [line])
+        if len(candidate) > max_len and lines:
+            break
+        lines.append(line)
+    return "\n".join(lines)
 
 
-def build_compact_3d(daily: list[dict[str, Any]]) -> str:
+def build_3d_vertical(daily: list[dict[str, Any]], max_len: int = 128) -> str:
     if not daily:
         return "暂无3天预报"
-    parts: list[str] = []
+    lines: list[str] = []
     for index, item in enumerate(daily):
         label = format_day_label(item.get("fxDate", ""), index)
         text_day = item.get("textDay", "")
-        parts.append(
-            f"{label}{text_day}{item.get('tempMin', '-')}-{item.get('tempMax', '-')}°C"
+        precip = item.get("precip")
+        precip_text = f" 降水{precip}mm" if precip and float(precip) > 0 else ""
+        line = (
+            f"{label} {weather_emoji(text_day)}{text_day} "
+            f"{item.get('tempMin', '-')}-{item.get('tempMax', '-')}°C{precip_text}"
         )
-    return " · ".join(parts)
+        candidate = "\n".join(lines + [line])
+        if len(candidate) > max_len and lines:
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def build_life_summary_short(
+    indices: list[dict],
+    umbrella_text: str,
+) -> str:
+    indexed = index_by_type(indices)
+
+    def short_index(item: dict | None, fallback: str) -> str:
+        if not item:
+            return fallback
+        return item.get("category") or item.get("text", "") or fallback
+
+    return " · ".join(
+        [
+            umbrella_text,
+            short_index(indexed.get("3"), "衣着暂无"),
+            short_index(indexed.get("5"), "UV暂无"),
+            short_index(indexed.get("9"), "感冒暂无"),
+        ]
+    )
+
+
 
 
 def build_warning_summary(warnings: list[dict[str, Any]]) -> str:
@@ -456,42 +384,6 @@ def build_air_quality_summary(aq: dict[str, Any] | None) -> str:
     return f"AQI{aqi} {category}"
 
 
-def _format_index_plain(name: str, item: dict | None) -> str:
-    if not item:
-        return f"{name}：暂无"
-    category = item.get("category", "")
-    text = item.get("text", "")
-    if category and text:
-        return f"{name}：{category} {text}"
-    if category:
-        return f"{name}：{category}"
-    if text:
-        return f"{name}：{text}"
-    return f"{name}：暂无"
-
-
-def build_life_summary(hourly: list[dict], indices: list[dict]) -> str:
-    indexed = index_by_type(indices)
-    umbrella_advice = build_umbrella_advice(hourly)
-    if "建议带伞" in umbrella_advice:
-        umbrella_text = "建议带伞"
-    else:
-        umbrella_text = "无需带伞"
-    parts = [
-        f"带伞：{umbrella_text}",
-        _format_index_plain("空调", indexed.get("11")),
-        _format_index_plain("衣着", indexed.get("3")),
-        _format_index_plain("紫外线", indexed.get("5")),
-        _format_index_plain("感冒", indexed.get("9")),
-        _format_index_plain("运动", indexed.get("1")),
-        _format_index_plain("旅游", indexed.get("6")),
-        _format_index_plain("舒适度", indexed.get("8")),
-        _format_index_plain("晾晒", indexed.get("14")),
-        _format_index_plain("防晒", indexed.get("16")),
-        _format_index_plain("交通", indexed.get("15")),
-        _format_index_plain("空气扩散", indexed.get("10")),
-    ]
-    return "；".join(parts)
 
 
 def build_24h_summary_plain(hourly: list[dict]) -> str:
@@ -520,51 +412,71 @@ def build_template_card(
     astronomy: dict[str, Any] | None = None,
     forecast_3d: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    header_date = datetime.now(TZ).strftime("%Y-%m-%d")
-    header_time = datetime.now(TZ).strftime("%H:%M")
-    weekday_cn = ["一", "二", "三", "四", "五", "六", "日"][datetime.now(TZ).weekday()]
+    now_dt = datetime.now(TZ)
+    header_date = now_dt.strftime("%Y-%m-%d")
+    header_time = now_dt.strftime("%H:%M")
+    weekday_cn = _WEEKDAY_CN[now_dt.weekday()]
 
-    feels = now.get("feelsLike")
-    emphasis_desc = now.get("text", "")
-    if feels:
-        emphasis_desc = f"{emphasis_desc} 体感{feels}°C"
+    qweather_url = f"https://www.qweather.com/weather/{GUANGZHOU_LOCATION}.html"
+    temp = now.get("temp", "-")
+    weather_text = now.get("text", "")
+    feels = now.get("feelsLike", "-")
+    humidity = now.get("humidity", "-")
 
-    humidity = f"{now.get('humidity', '-')}%"
     wind_value = f"{now.get('windDir', '')}{now.get('windScale', '')}级".strip()
     if not wind_value or wind_value == "级":
         wind_value = "未知"
 
-    return {
-        "card_type": "text_notice",
-        "source": {"desc": "和风天气", "desc_color": 1},
+    umbrella_advice = build_umbrella_advice(hourly)
+    umbrella_short = "建议带伞" if "建议带伞" in umbrella_advice else "无需带伞"
+    astronomy_plain = build_astronomy_lines(astronomy or {}).replace("🌅 ", "").replace("🌙 ", "").replace("🌌 暂无天文数据", "暂无数据")
+
+    card: dict[str, Any] = {
+        "card_type": "news_notice",
+        "source": {
+            "icon_url": weather_icon_url(now.get("icon")),
+            "desc": "和风天气",
+            "desc_color": 1,
+        },
         "main_title": {
-            "title": truncate_text(f"{CITY_NAME} {header_date} 周{weekday_cn}", 26),
-            "desc": truncate_text(f"更新于 {header_time} · {build_astronomy_lines(astronomy or {})}", 30),
+            "title": truncate_text(f"🌤️ {CITY_NAME}", 26),
+            "desc": truncate_text(f"{header_date} 周{weekday_cn} {header_time}", 30),
         },
-        "emphasis_content": {
-            "title": f"{now.get('temp', '-')}°C",
-            "desc": truncate_text(emphasis_desc, 15),
+        "image_text_area": {
+            "type": 1,
+            "url": qweather_url,
+            "title": f"{temp}°C",
+            "desc": truncate_text(f"{weather_text} · 体感{feels}°C", 30),
+            "image_url": weather_icon_url(now.get("icon")),
         },
-        "sub_title_text": truncate_text(f"未来6小时 {build_compact_6h(hourly)}", 112),
+        "vertical_content_list": [
+            {"title": "未来6小时", "desc": truncate_text(build_hourly_vertical(hourly), 128)},
+            {"title": "未来3天", "desc": truncate_text(build_3d_vertical(forecast_3d or []), 128)},
+            {"title": "生活提醒", "desc": truncate_text(build_life_summary_short(indices, umbrella_short), 128)},
+            {"title": "日出月相", "desc": truncate_text(astronomy_plain, 128)},
+        ],
         "horizontal_content_list": [
-            {"keyname": "湿度", "value": truncate_text(humidity, 26)},
+            {"keyname": "湿度", "value": truncate_text(f"{humidity}%", 26)},
             {"keyname": "风力", "value": truncate_text(wind_value, 26)},
             {"keyname": "24小时", "value": truncate_text(build_24h_summary_plain(hourly), 26)},
-            {"keyname": "3天", "value": truncate_text(build_compact_3d(forecast_3d or []), 26)},
             {"keyname": "空气", "value": truncate_text(build_air_quality_summary(air_quality), 26)},
-            {"keyname": "预警", "value": truncate_text(build_warning_summary(warnings), 26)},
+            {"keyname": "预警", "value": truncate_text("有预警" if warnings else "暂无预警", 26)},
+            {"keyname": "带伞", "value": truncate_text(umbrella_short, 26)},
         ],
-        "quote_area": {
-            "type": 0,
-            "title": "生活提醒",
-            "quote_text": truncate_text(build_life_summary(hourly, indices), 128),
-        },
-        "card_action": {
-            "type": 1,
-            "url": f"https://www.qweather.com/weather/{GUANGZHOU_LOCATION}.html",
-        },
+        "jump_list": [
+            {"type": 1, "title": "查看和风天气", "url": qweather_url},
+        ],
+        "card_action": {"type": 1, "url": qweather_url},
     }
 
+    if warnings:
+        card["quote_area"] = {
+            "type": 0,
+            "title": "⚠️ 气象预警",
+            "quote_text": truncate_text(build_warning_summary(warnings), 128),
+        }
+
+    return card
 
 def mask_webhook_url(url: str) -> str:
     """日志脱敏：仅保留 Webhook key 首尾少量字符，避免泄露完整密钥。"""
