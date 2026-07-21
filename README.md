@@ -1,6 +1,6 @@
 # 企微天气预报推送
 
-每天北京时间 **05:00**、**15:30** 自动向企业微信群推送广州天气预报（Markdown 格式，单条消息展示完整内容，无外链跳转），包括：
+每天北京时间 **05:00**、**15:00** 自动向企业微信群推送广州天气预报（Markdown 格式，单条消息展示完整内容，无外链跳转），包括：
 
 - 实况天气
 - 未来 6 小时逐小时预报
@@ -68,7 +68,22 @@ git push -u origin main
 | 北京时间 | UTC cron     |
 | -------- | ------------ |
 | 05:00    | `0 21 * * *` |
-| 15:30    | `30 7 * * *` |
+| 15:00    | `0 7 * * *` |
+
+## CI（中心化模板）
+
+本仓库通过 [Yun-Hai-Org/ci-templates](https://github.com/Yun-Hai-Org/ci-templates) 的 **Reusable Workflows** 接入统一 CI（方案 B：仓库内 `.github/workflows/ci.yml` 调用中心化模板）。
+
+- **触发**：Pull Request 与 push 到任意分支时运行 `.github/workflows/ci.yml`
+- **当前启用**：安全扫描（Semgrep / Gitleaks / Trivy 等，按模板默认规则）；可选企业微信 CI 开始/结束通知
+- **当前关闭**：静态分析（`run-static-analysis: false`）、依赖审计（`run-dependency-audit: false`）——本项目为单脚本结构，无 `pyproject.toml`，不适用 ruff/pyright/pip-audit 等检查
+- **完整文档**：模板能力、参数说明、Secrets 配置见 [ci-templates README](https://github.com/Yun-Hai-Org/ci-templates/blob/main/README.md) 与 `templates/python-ci.yml`
+
+**Secrets（可选）**
+
+| Secret           | 说明                                                                 |
+| ---------------- | -------------------------------------------------------------------- |
+| `WECOM_BOT_KEY`  | 企业微信群机器人 key，用于 CI 通知；建议在组织级配置（见模板 README） |
 
 ## 费用
 

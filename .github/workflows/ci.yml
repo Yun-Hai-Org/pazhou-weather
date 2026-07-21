@@ -1,0 +1,21 @@
+# Python 项目 CI — 接入 Yun-Hai-Org/ci-templates 中心化模板
+# 参考：2020717-ci-templates/README.md Quick Start / templates/python-ci.yml
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+
+jobs:
+  ci:
+    uses: Yun-Hai-Org/ci-templates/.github/workflows/standard-ci.yml@main
+    with:
+      project-type: "python"
+      python-version: "3.12"
+      run-static-analysis: false
+      run-security-scan: true
+      run-dependency-audit: false
+      run-release-gates: false
+      wecom-notify: true
+    secrets: inherit
