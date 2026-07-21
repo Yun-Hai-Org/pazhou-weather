@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 venv/
 .hooks/
+.claude/settings.local.json
+.claude/worktrees/
