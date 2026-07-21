@@ -399,7 +399,119 @@ def build_astronomy_lines(astro: dict[str, Any]) -> str:
     return "　".join(parts) if parts else "🌌 暂无天文数据"
 
 
-def build_message(
+def truncate_text(text: str, max_len: int) -> str:
+    text = text.strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def build_compact_6h(hourly: list[dict]) -> str:
+    parts: list[str] = []
+    for item in hourly[:6]:
+        pop = pop_value(item.get("pop"))
+        text = item.get("text", "")
+        rain_mark = "*" if is_rainy_text(text) or pop >= UMBRELLA_POP_THRESHOLD else ""
+        parts.append(f"{format_hour(item['fxTime'])} {text} {item['temp']}°C{rain_mark}")
+    return " · ".join(parts)
+
+
+def build_compact_3d(daily: list[dict[str, Any]]) -> str:
+    if not daily:
+        return "暂无3天预报"
+    parts: list[str] = []
+    for index, item in enumerate(daily):
+        label = format_day_label(item.get("fxDate", ""), index)
+        text_day = item.get("textDay", "")
+        parts.append(
+            f"{label}{text_day}{item.get('tempMin', '-')}-{item.get('tempMax', '-')}°C"
+        )
+    return " · ".join(parts)
+
+
+def build_warning_summary(warnings: list[dict[str, Any]]) -> str:
+    if not warnings:
+        return "暂无预警"
+    parts: list[str] = []
+    for item in warnings:
+        title = item.get("headLine") or item.get("headline") or "预警"
+        event = (item.get("eventType") or {}).get("name", "")
+        level = format_warning_level(item)
+        label = f"{event}{title}" if event else title
+        if level:
+            label = f"{label}({level})"
+        parts.append(label)
+    return "；".join(parts)
+
+
+def build_air_quality_summary(aq: dict[str, Any] | None) -> str:
+    if not aq:
+        return "暂无数据"
+    aqi = aq.get("aqi", "-")
+    category = aq.get("category", "")
+    primary = aq.get("primaryPollutant") or ""
+    primary_label = _POLLUTANT_LABEL.get(primary, primary.upper()) if primary else ""
+    if primary_label:
+        return f"AQI{aqi} {category} 主{primary_label}"
+    return f"AQI{aqi} {category}"
+
+
+def _format_index_plain(name: str, item: dict | None) -> str:
+    if not item:
+        return f"{name}：暂无"
+    category = item.get("category", "")
+    text = item.get("text", "")
+    if category and text:
+        return f"{name}：{category} {text}"
+    if category:
+        return f"{name}：{category}"
+    if text:
+        return f"{name}：{text}"
+    return f"{name}：暂无"
+
+
+def build_life_summary(hourly: list[dict], indices: list[dict]) -> str:
+    indexed = index_by_type(indices)
+    umbrella_advice = build_umbrella_advice(hourly)
+    if "建议带伞" in umbrella_advice:
+        umbrella_text = "建议带伞"
+    else:
+        umbrella_text = "无需带伞"
+    parts = [
+        f"带伞：{umbrella_text}",
+        _format_index_plain("空调", indexed.get("11")),
+        _format_index_plain("衣着", indexed.get("3")),
+        _format_index_plain("紫外线", indexed.get("5")),
+        _format_index_plain("感冒", indexed.get("9")),
+        _format_index_plain("运动", indexed.get("1")),
+        _format_index_plain("旅游", indexed.get("6")),
+        _format_index_plain("舒适度", indexed.get("8")),
+        _format_index_plain("晾晒", indexed.get("14")),
+        _format_index_plain("防晒", indexed.get("16")),
+        _format_index_plain("交通", indexed.get("15")),
+        _format_index_plain("空气扩散", indexed.get("10")),
+    ]
+    return "；".join(parts)
+
+
+def build_24h_summary_plain(hourly: list[dict]) -> str:
+    temps = [int(item["temp"]) for item in hourly]
+    min_temp = min(temps)
+    max_temp = max(temps)
+    has_rain = any(
+        is_rainy_text(item.get("text", "")) or pop_value(item.get("pop")) >= UMBRELLA_POP_THRESHOLD
+        for item in hourly
+    )
+    wind_scales = [parse_wind_scale(item.get("windScale", "0")) for item in hourly if item.get("windScale")]
+    if wind_scales:
+        wind_summary = f"风力{min(wind_scales)}-{max(wind_scales)}级"
+    else:
+        wind_summary = "风力未知"
+    rain_text = "有雨" if has_rain else "无雨"
+    return f"{min_temp}-{max_temp}°C {rain_text} {wind_summary}"
+
+
+def build_template_card(
     now: dict[str, Any],
     hourly: list[dict[str, Any]],
     warnings: list[dict[str, Any]],
@@ -407,68 +519,51 @@ def build_message(
     air_quality: dict[str, Any] | None = None,
     astronomy: dict[str, Any] | None = None,
     forecast_3d: list[dict[str, Any]] | None = None,
-) -> str:
-    now_text_icon = "🌤️" if "晴" in now['text'] else ("☁️" if "云" in now['text'] or "阴" in now['text'] else "🌧️")
-    feels = now.get("feelsLike")
-    feels_part = f"　|　🤚 体感 **{feels}°C**" if feels else ""
-    now_text = (
-        f"{now_text_icon} **{now['text']}　{now['temp']}°C**"
-        f"{feels_part}\n"
-        f"　　💧 湿度 **{now.get('humidity', '-')}%**　|　"
-        f"🌬️ {now.get('windDir', '')} **{now.get('windScale', '')}级**"
-    )
-
-    next_6h = "\n".join(build_next_6h_lines(hourly))
-    summary_24h = build_24h_summary(hourly)
-    warning_lines = build_warning_lines(warnings)
-    indexed = index_by_type(indices)
-
-    umbrella_advice = build_umbrella_advice(hourly)
-    if "建议带伞" in umbrella_advice:
-        umbrella_text = "建议带伞（未来 6 小时可能下雨）"
-    else:
-        umbrella_text = "无需带伞"
-    life_lines = [
-        format_index_line("带伞", {"category": "", "text": umbrella_text}),
-        format_index_line("空调", indexed.get("11")),
-        format_index_line("衣着", indexed.get("3")),
-        format_index_line("紫外线", indexed.get("5")),
-        format_index_line("感冒", indexed.get("9")),
-        format_index_line("运动", indexed.get("1")),
-        format_index_line("旅游", indexed.get("6")),
-        format_index_line("舒适度", indexed.get("8")),
-        format_index_line("晾晒", indexed.get("14")),
-        format_index_line("防晒", indexed.get("16")),
-        format_index_line("交通", indexed.get("15")),
-        format_index_line("空气扩散", indexed.get("10")),
-    ]
-
+) -> dict[str, Any]:
     header_date = datetime.now(TZ).strftime("%Y-%m-%d")
     header_time = datetime.now(TZ).strftime("%H:%M")
     weekday_cn = ["一", "二", "三", "四", "五", "六", "日"][datetime.now(TZ).weekday()]
-    warning_text = "\n".join(warning_lines)
-    life_text = "\n".join(life_lines)
-    air_quality_text = build_air_quality_lines(air_quality)
-    astronomy_text = build_astronomy_lines(astronomy or {})
-    forecast_3d_text = build_3d_forecast_lines(forecast_3d or [])
 
-    return (
-        f"## 🌈 {CITY_NAME}天气预报　<font color=\"comment\">{header_date} 周{weekday_cn} {header_time}</font>\n"
-        f"{now_text}\n\n"
-        f"#### ⏰ 未来 6 小时\n"
-        f"{next_6h}\n\n"
-        f"#### 📅 未来 24 小时\n"
-        f"{summary_24h}\n\n"
-        f"#### 🗓️ 未来 3 天\n"
-        f"{forecast_3d_text}\n\n"
-        f"#### 🚨 气象预警\n"
-        f"{warning_text}\n\n"
-        f"#### 🌫️ 空气质量\n"
-        f"{air_quality_text}\n\n"
-        f"{astronomy_text}\n\n"
-        f"#### 💡 生活提醒\n"
-        f"{life_text}\n\n"
-    )
+    feels = now.get("feelsLike")
+    emphasis_desc = now.get("text", "")
+    if feels:
+        emphasis_desc = f"{emphasis_desc} 体感{feels}°C"
+
+    humidity = f"{now.get('humidity', '-')}%"
+    wind_value = f"{now.get('windDir', '')}{now.get('windScale', '')}级".strip()
+    if not wind_value or wind_value == "级":
+        wind_value = "未知"
+
+    return {
+        "card_type": "text_notice",
+        "source": {"desc": "和风天气", "desc_color": 1},
+        "main_title": {
+            "title": truncate_text(f"{CITY_NAME} {header_date} 周{weekday_cn}", 26),
+            "desc": truncate_text(f"更新于 {header_time} · {build_astronomy_lines(astronomy or {})}", 30),
+        },
+        "emphasis_content": {
+            "title": f"{now.get('temp', '-')}°C",
+            "desc": truncate_text(emphasis_desc, 15),
+        },
+        "sub_title_text": truncate_text(f"未来6小时 {build_compact_6h(hourly)}", 112),
+        "horizontal_content_list": [
+            {"keyname": "湿度", "value": truncate_text(humidity, 26)},
+            {"keyname": "风力", "value": truncate_text(wind_value, 26)},
+            {"keyname": "24小时", "value": truncate_text(build_24h_summary_plain(hourly), 26)},
+            {"keyname": "3天", "value": truncate_text(build_compact_3d(forecast_3d or []), 26)},
+            {"keyname": "空气", "value": truncate_text(build_air_quality_summary(air_quality), 26)},
+            {"keyname": "预警", "value": truncate_text(build_warning_summary(warnings), 26)},
+        ],
+        "quote_area": {
+            "type": 0,
+            "title": "生活提醒",
+            "quote_text": truncate_text(build_life_summary(hourly, indices), 128),
+        },
+        "card_action": {
+            "type": 1,
+            "url": f"https://www.qweather.com/weather/{GUANGZHOU_LOCATION}.html",
+        },
+    }
 
 
 def mask_webhook_url(url: str) -> str:
@@ -482,16 +577,16 @@ def mask_webhook_url(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?key={masked_key}"
 
 
-def send_wecom_markdown(webhook_url: str, content: str) -> None:
+def send_wecom_template_card(webhook_url: str, template_card: dict[str, Any]) -> None:
     payload = http_post_json(
         webhook_url,
-        {"msgtype": "markdown", "markdown": {"content": content}},
+        {"msgtype": "template_card", "template_card": template_card},
     )
     if payload.get("errcode") != 0:
         raise RuntimeError(f"WeCom webhook error: {payload}")
 
 
-def send_wecom_markdown_all(webhook_urls: list[str], content: str) -> None:
+def send_wecom_template_card_all(webhook_urls: list[str], template_card: dict[str, Any]) -> None:
     """向多个企业微信 Webhook 推送同样的消息。
 
     单个 Webhook 推送失败不会中断其它 Webhook 的推送；全部尝试完成后，
@@ -501,7 +596,7 @@ def send_wecom_markdown_all(webhook_urls: list[str], content: str) -> None:
     for index, url in enumerate(webhook_urls, start=1):
         masked = mask_webhook_url(url)
         try:
-            send_wecom_markdown(url, content)
+            send_wecom_template_card(url, template_card)
             print(f"✅ 已发送至企业微信 #{index}（{masked}）")
         except Exception as exc:  # noqa: BLE001 - 汇总后统一报错，不因单个失败中断其他推送
             print(f"❌ 发送至企业微信 #{index}（{masked}）失败：{exc}", file=sys.stderr)
@@ -520,10 +615,10 @@ def main() -> None:
 
     now, hourly, warnings, indices = fetch_weather(api_host, api_key)
     air_quality = fetch_air_quality(api_host, api_key)
-    astronomy = fetch_astronomy(api_host, api_key)
     forecast_3d = fetch_3d_forecast(api_host, api_key)
-    message = build_message(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d)
-    send_wecom_markdown_all(webhook_urls, message)
+    astronomy = fetch_astronomy(api_host, api_key)
+    template_card = build_template_card(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d)
+    send_wecom_template_card_all(webhook_urls, template_card)
     print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
 
 
