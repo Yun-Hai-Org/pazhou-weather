@@ -7,3 +7,5 @@ venv/
 .claude/settings.local.json
 .claude/worktrees/
 .worktrees/
+public/
+_bmad-output/

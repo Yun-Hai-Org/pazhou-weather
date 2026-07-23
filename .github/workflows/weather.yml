@@ -6,15 +6,55 @@ on:
     - cron: "0 7 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  deployments: write
+
 jobs:
   send-weather:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
       - name: Send weather report
         env:
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+          PAGES_BASE_URL: https://pr9898.github.io/20260709--/
         run: ./run.sh
+
+      - name: Upload detail page artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-detail-page
+          path: public
+
+  deploy:
+    needs: send-weather
+    if: always()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: weather-detail-page
+          path: public
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

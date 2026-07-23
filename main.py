@@ -1,4 +1,5 @@
 import gzip
+import html
 import json
 import os
 import re
@@ -9,6 +10,10 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+
+def esc(value):
+    return html.escape(str(value), quote=False)
 
 # 广州市海珠区（琶洲片区所属行政区）官方 Location ID
 # 说明：免费套餐不含 GeoAPI/POI 接口，无法精确检索"琶洲"POI，
@@ -399,78 +404,6 @@ def build_astronomy_lines(astro: dict[str, Any]) -> str:
     return "　".join(parts) if parts else "🌌 暂无天文数据"
 
 
-def build_message(
-    now: dict[str, Any],
-    hourly: list[dict[str, Any]],
-    warnings: list[dict[str, Any]],
-    indices: list[dict[str, Any]],
-    air_quality: dict[str, Any] | None = None,
-    astronomy: dict[str, Any] | None = None,
-    forecast_3d: list[dict[str, Any]] | None = None,
-) -> str:
-    now_text_icon = "🌤️" if "晴" in now['text'] else ("☁️" if "云" in now['text'] or "阴" in now['text'] else "🌧️")
-    feels = now.get("feelsLike")
-    feels_part = f"　|　🤚 体感 **{feels}°C**" if feels else ""
-    now_text = (
-        f"{now_text_icon} **{now['text']}　{now['temp']}°C**"
-        f"{feels_part}\n"
-        f"　　💧 湿度 **{now.get('humidity', '-')}%**　|　"
-        f"🌬️ {now.get('windDir', '')} **{now.get('windScale', '')}级**"
-    )
-
-    next_6h = "\n".join(build_next_6h_lines(hourly))
-    summary_24h = build_24h_summary(hourly)
-    warning_lines = build_warning_lines(warnings)
-    indexed = index_by_type(indices)
-
-    umbrella_advice = build_umbrella_advice(hourly)
-    if "建议带伞" in umbrella_advice:
-        umbrella_text = "建议带伞（未来 6 小时可能下雨）"
-    else:
-        umbrella_text = "无需带伞"
-    life_lines = [
-        format_index_line("带伞", {"category": "", "text": umbrella_text}),
-        format_index_line("空调", indexed.get("11")),
-        format_index_line("衣着", indexed.get("3")),
-        format_index_line("紫外线", indexed.get("5")),
-        format_index_line("感冒", indexed.get("9")),
-        format_index_line("运动", indexed.get("1")),
-        format_index_line("旅游", indexed.get("6")),
-        format_index_line("舒适度", indexed.get("8")),
-        format_index_line("晾晒", indexed.get("14")),
-        format_index_line("防晒", indexed.get("16")),
-        format_index_line("交通", indexed.get("15")),
-        format_index_line("空气扩散", indexed.get("10")),
-    ]
-
-    header_date = datetime.now(TZ).strftime("%Y-%m-%d")
-    header_time = datetime.now(TZ).strftime("%H:%M")
-    weekday_cn = ["一", "二", "三", "四", "五", "六", "日"][datetime.now(TZ).weekday()]
-    warning_text = "\n".join(warning_lines)
-    life_text = "\n".join(life_lines)
-    air_quality_text = build_air_quality_lines(air_quality)
-    astronomy_text = build_astronomy_lines(astronomy or {})
-    forecast_3d_text = build_3d_forecast_lines(forecast_3d or [])
-
-    return (
-        f"## 🌈 {CITY_NAME}天气预报　<font color=\"comment\">{header_date} 周{weekday_cn} {header_time}</font>\n"
-        f"{now_text}\n\n"
-        f"#### ⏰ 未来 6 小时\n"
-        f"{next_6h}\n\n"
-        f"#### 📅 未来 24 小时\n"
-        f"{summary_24h}\n\n"
-        f"#### 🗓️ 未来 3 天\n"
-        f"{forecast_3d_text}\n\n"
-        f"#### 🚨 气象预警\n"
-        f"{warning_text}\n\n"
-        f"#### 🌫️ 空气质量\n"
-        f"{air_quality_text}\n\n"
-        f"{astronomy_text}\n\n"
-        f"#### 💡 生活提醒\n"
-        f"{life_text}\n\n"
-    )
-
-
 def mask_webhook_url(url: str) -> str:
     """日志脱敏：仅保留 Webhook key 首尾少量字符，避免泄露完整密钥。"""
     parsed = urllib.parse.urlparse(url)
@@ -482,32 +415,224 @@ def mask_webhook_url(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?key={masked_key}"
 
 
-def send_wecom_markdown(webhook_url: str, content: str) -> None:
+def truncate_text(text, max_len):
+    text = (text or "").strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def weather_emoji(text):
+    if "雷" in text:
+        return "⛈️"
+    if is_rainy_text(text):
+        if "雪" in text:
+            return "❄️"
+        if "雹" in text:
+            return "🌨️"
+        return "🌧️"
+    if "雾" in text or "霾" in text:
+        return "🌫️"
+    if "云" in text or "阴" in text:
+        return "☁️"
+    return "☀️"
+
+
+def build_hourly_vertical(hourly, max_len=112):
+    lines = []
+    for item in hourly[:6]:
+        fx_time = item.get("fxTime", "")
+        if not fx_time:
+            continue
+        pop = pop_value(item.get("pop"))
+        weather_text = item.get("text", "")
+        temp = item.get("temp", "-")
+        line = f"{format_hour(fx_time)} {weather_emoji(weather_text)}{weather_text} {temp}°C{f' {pop}%' if pop else ''}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def select_card_icon(hourly):
+    if not hourly:
+        return "100"
+    first_by_rank = {}
+    for item in hourly[:6]:
+        text = item.get("text", "")
+        icon = item.get("icon", "100")
+        if any(k in text for k in ("雨", "雪", "雹")):
+            rank = 3
+        elif "云" in text or "阴" in text:
+            rank = 2
+        elif "晴" in text:
+            rank = 1
+        else:
+            rank = 2
+        if rank not in first_by_rank:
+            first_by_rank[rank] = icon
+    best_rank = max(first_by_rank)
+    return first_by_rank[best_rank]
+
+
+def build_news_notice_card(now, hourly, astronomy, pages_base_url):
+    icon_code = select_card_icon(hourly)
+    now_dt = datetime.now(TZ)
+    header_date = now_dt.strftime("%Y-%m-%d")
+    header_time = now_dt.strftime("%H:%M")
+    weekday_cn = _WEEKDAY_CN[now_dt.weekday()]
+    card_image_url = f"https://cdn.jsdelivr.net/npm/qweather-icons@1.8.0/icons/{icon_code}.svg"
+    hourly_desc = build_hourly_vertical(hourly)
+    astro_desc = build_astronomy_lines(astronomy or {})
+    astro_desc = astro_desc.replace("🌅 ", "").replace("🌙 ", "").replace("🌌 暂无天文数据", "暂无数据")
+    jump_url = pages_base_url or "https://pr9898.github.io/20260709--/"
+    card = {
+        "card_type": "news_notice",
+        "source": {"icon_url": card_image_url, "desc": "和风天气", "desc_color": 0},
+        "main_title": {
+            "title": truncate_text(f"🌤️ {CITY_NAME}", 26),
+            "desc": truncate_text(f"{header_date} 周{weekday_cn} {header_time}", 30),
+        },
+        "card_image": {"url": card_image_url},
+        "vertical_content_list": [
+            {"title": "未来6小时", "desc": truncate_text(hourly_desc, 112)},
+            {"title": "日出日落", "desc": truncate_text(astro_desc, 112)},
+        ],
+        "card_action": {"type": 1, "url": jump_url},
+    }
+    return card
+
+
+def send_wecom_template_card(webhook_url, template_card):
     payload = http_post_json(
         webhook_url,
-        {"msgtype": "markdown", "markdown": {"content": content}},
+        {"msgtype": "template_card", "template_card": template_card},
     )
     if payload.get("errcode") != 0:
         raise RuntimeError(f"WeCom webhook error: {payload}")
 
 
-def send_wecom_markdown_all(webhook_urls: list[str], content: str) -> None:
-    """向多个企业微信 Webhook 推送同样的消息。
-
-    单个 Webhook 推送失败不会中断其它 Webhook 的推送；全部尝试完成后，
-    若存在失败项则汇总抛出异常，便于 CI/终端感知问题。
-    """
-    errors: list[str] = []
+def send_wecom_template_card_all(webhook_urls, template_card):
+    errors = []
     for index, url in enumerate(webhook_urls, start=1):
         masked = mask_webhook_url(url)
         try:
-            send_wecom_markdown(url, content)
+            send_wecom_template_card(url, template_card)
             print(f"✅ 已发送至企业微信 #{index}（{masked}）")
-        except Exception as exc:  # noqa: BLE001 - 汇总后统一报错，不因单个失败中断其他推送
+        except Exception as exc:
             print(f"❌ 发送至企业微信 #{index}（{masked}）失败：{exc}", file=sys.stderr)
             errors.append(f"#{index} {masked}: {exc}")
     if errors:
         raise RuntimeError("部分企业微信推送失败：\n" + "\n".join(errors))
+
+
+def build_detail_html(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d):
+    now_dt = datetime.now(TZ)
+    header_date = now_dt.strftime("%Y-%m-%d")
+    weekday_cn = _WEEKDAY_CN[now_dt.weekday()]
+    now_icon = now.get("icon", "100")
+    now_text = now.get("text", "")
+    now_temp = now.get("temp", "-")
+    feels = now.get("feelsLike", "-")
+    humidity = now.get("humidity", "-")
+    wind_dir = now.get("windDir", "")
+    wind_scale = now.get("windScale", "")
+    umbrella = build_umbrella_advice(hourly).replace("**", "")
+    indexed = index_by_type(indices)
+    life_keys = [("带伞", ""), ("空调", "11"), ("衣着", "3"), ("紫外线", "5"), ("感冒", "9"), ("运动", "1"), ("旅游", "6"), ("舒适度", "8"), ("晾晒", "14"), ("防晒", "16"), ("交通", "15"), ("空气扩散", "10")]
+    life_rows = ""
+    for name, key in life_keys:
+        if name == "带伞":
+            val = umbrella
+        else:
+            item = indexed.get(key)
+            val = (item or {}).get("category", "") or (item or {}).get("text", "") or "暂无数据"
+        life_rows += f"        <div class=row><b>{name}</b><span>{esc(val)}</span></div>\n"
+    hourly_cards = ""
+    for item in hourly[:24]:
+        fx_time = item.get("fxTime", "")
+        t = format_hour(fx_time) if fx_time else "--"
+        ic = item.get("icon", "100")
+        tp = item.get("temp", "-")
+        tx = item.get("text", "")
+        pop = pop_value(item.get("pop"))
+        pop_html = f"<div class=p>💧{pop}%</div>" if pop else ""
+        hourly_cards += f"        <div class=h><div class=d>{t}</div><i class=qi-{ic}></i><div class=t>{tp}°</div><div class=d>{esc(tx)}</div>{pop_html}</div>\n"
+    if not hourly_cards:
+        hourly_cards = '        <div class=sec-empty>暂无逐时数据</div>\n'
+    day_rows = ""
+    for index, item in enumerate(forecast_3d or []):
+        fx_date = item.get("fxDate", "")
+        label = format_day_label(fx_date, index) if fx_date else ("今天" if index == 0 else "未来")
+        ic = item.get("iconDay", "100")
+        tx = item.get("textDay", "")
+        tmn = item.get("tempMin", "-")
+        tmx = item.get("tempMax", "-")
+        day_rows += f"        <div class=day><div class=lab>{label}</div><div class=ico><i class=qi-{ic}></i></div><div class=txt>{tx}</div><div class=tmp>{tmn}-{tmx}°C</div></div>\n"
+    if not day_rows:
+        day_rows = '        <div class=sec-empty>暂无 3 天预报数据</div>\n'
+    aq_html = build_air_quality_lines(air_quality).replace("**", "").replace("　", " ").replace(chr(96), "")
+    astro_html = build_astronomy_lines(astronomy or {}).replace("　", " ")
+    if not warnings:
+        warn_html = "<div class=sec-empty>✅ 暂无气象预警</div>"
+    else:
+        warn_items = ""
+        for w in warnings:
+            title = w.get("headLine") or w.get("headline") or "预警"
+            event = (w.get("eventType") or {}).get("name", "")
+            level = format_warning_level(w)
+            chip = f"<span class=chip>{level}</span> " if level else ""
+            event_chip = f"【{event}】" if event else ""
+            warn_items += f"        <div class=warn>⚠️ {event_chip}{esc(title)} {chip}</div>\n"
+        warn_html = warn_items
+    css = """:root{--bg:#0f1419;--card:#1a2029;--txt:#e6edf3;--sub:#8b98a5;--acc:#4ea1ff;--warn:#ffb454;--rain:#5ac8fa}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.5;padding:12px;max-width:600px;margin:0 auto}
+h2{font-size:15px;color:var(--sub);margin:18px 0 8px;font-weight:600}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px}
+.now{text-align:center;padding:20px 12px}
+.now .icon{font-size:64px;line-height:1}
+.now .temp{font-size:54px;font-weight:700;margin-top:6px}
+.now .text{font-size:18px;color:var(--sub);margin-top:2px}
+.now .meta{color:var(--sub);margin-top:10px;font-size:13px}
+.scroll{display:flex;overflow-x:auto;gap:10px;padding-bottom:4px}
+.scroll .h{flex:0 0 66px;text-align:center;background:var(--bg);border-radius:10px;padding:10px 4px}
+.scroll .h .t{font-size:20px;margin:4px 0}
+.scroll .h .d{font-size:12px;color:var(--sub)}
+.scroll .h .p{font-size:12px;color:var(--rain);margin-top:2px}
+.days .day{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #2a313c}
+.days .day:last-child{border-bottom:none}
+.days .lab{color:var(--sub);width:54px}
+.days .ico{font-size:22px;width:38px;text-align:center}
+.days .txt{flex:1;padding:0 8px;font-size:14px}
+.days .tmp{font-weight:600}
+.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #2a313c}
+.row:last-child{border-bottom:none}
+.row b{color:var(--txt);font-weight:500;width:72px}
+.row span{color:var(--sub);text-align:right;flex:1}
+.warn{color:var(--warn);padding:8px 0;border-bottom:1px solid #2a313c}
+.warn:last-child{border-bottom:none}
+.chip{background:var(--warn);color:#000;border-radius:4px;padding:0 6px;font-size:12px;margin-left:4px}
+.sec-empty{color:var(--sub);padding:8px 0}
+.qi{font-style:normal}"""
+    html = f"""<!DOCTYPE html>
+<html lang=zh-CN>
+<head><meta charset=utf-8><meta name=viewport content=\"width=device-width, initial-scale=1\"><meta name=robots content=noindex><title>{CITY_NAME} 天气详情</title><link rel=stylesheet href=\"https://cdn.jsdelivr.net/npm/qweather-icons@1.8.0/font/qweather-icons.css\"><style>
+{css}
+</style></head>
+<body>
+<div class=\"card now\"><i class=\"qi-{now_icon}\" style=\"font-size:64px\"></i><div class=temp>{now_temp}°C</div><div class=text>{esc(now_text)}</div><div class=meta>体感 {feels}°C · 湿度 {humidity}% · {wind_dir}{wind_scale}级</div></div>
+<h2>⏰ 未来 24 小时</h2><div class=card><div class=scroll>
+{hourly_cards}        </div></div>
+<h2>🗓️ 未来 3 天</h2><div class=\"card days\">
+{day_rows}        </div>
+<h2>🌫️ 空气质量</h2><div class=card>{aq_html}</div>
+<h2>🌅 日出日落 · 月相</h2><div class=card>{astro_html}</div>
+<h2>🚨 气象预警</h2><div class=card>{warn_html}</div>
+<h2>💡 生活提醒</h2><div class=card>
+{life_rows}        </div>
+<div class=meta style=\"text-align:center;padding:16px 0\">{header_date} 周{weekday_cn} · {CITY_NAME} · 数据来自和风天气</div>
+</body>
+</html>"""
+    return html
 
 
 def main() -> None:
@@ -522,8 +647,18 @@ def main() -> None:
     air_quality = fetch_air_quality(api_host, api_key)
     astronomy = fetch_astronomy(api_host, api_key)
     forecast_3d = fetch_3d_forecast(api_host, api_key)
-    message = build_message(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d)
-    send_wecom_markdown_all(webhook_urls, message)
+    pages_base_url = os.environ.get("PAGES_BASE_URL", "").strip()
+    try:
+        html = build_detail_html(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d)
+        output_dir = "public"
+        os.makedirs(output_dir, exist_ok=True)
+        with open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"Detail page written to {output_dir}/index.html")
+    except Exception as exc:
+        print(f"⚠️  详情页生成失败（{exc}），跳过；继续推送卡片")
+    card = build_news_notice_card(now, hourly, astronomy, pages_base_url)
+    send_wecom_template_card_all(webhook_urls, card)
     print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
 
 
