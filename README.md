@@ -1,4 +1,6 @@
-# 企微天气预报推送
+# 琶洲天气预报推送
+
+仓库：[Yun-Hai-Org/pazhou-weather](https://github.com/Yun-Hai-Org/pazhou-weather)
 
 每天北京时间 **05:50**、**16:50** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
 
@@ -42,7 +44,7 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 
 ### 3. Cloudflare Pages
 
-在 GitHub **Settings - Secrets and variables - Actions** 中配置：
+在组织 [Yun-Hai-Org](https://github.com/Yun-Hai-Org) 或仓库 **Settings → Secrets and variables → Actions** 中配置：
 
 | 类型 | 名称 | 说明 |
 | ---- | ---- | ---- |
@@ -63,8 +65,8 @@ Worker 位于 `workers/weather-cron/`，在北京时间 05:50 / 16:50 向 GitHub
 | Secret | 说明 |
 | ------ | ---- |
 | GH_PAT | GitHub Personal Access Token（`repo` 权限，可触发 workflow） |
-| GH_OWNER | GitHub 仓库所有者 |
-| GH_REPO | GitHub 仓库名 |
+| GH_OWNER | Yun-Hai-Org |
+| GH_REPO | pazhou-weather |
 
 ```bash
 cd workers/weather-cron
