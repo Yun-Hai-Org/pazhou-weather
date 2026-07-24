@@ -2,7 +2,7 @@
   "card_type": "news_notice",
   "source": {
     "icon_url": {{ source_icon_url | tojson }},
-    "desc": {{ "和风天气" | tojson }},
+    "desc": {{ source_desc | tojson }},
     "desc_color": 0
   },
   "main_title": {
@@ -14,14 +14,12 @@
     "aspect_ratio": 2.2
   },
   "vertical_content_list": [
+{% for item in vertical_items %}
     {
-      "title": {{ "未来6小时" | tojson }},
-      "desc": {{ hourly_desc | tojson }}
-    },
-    {
-      "title": {{ "日出日落" | tojson }},
-      "desc": {{ astro_desc | tojson }}
-    }
+      "title": {{ item.title | tojson }},
+      "desc": {{ item.desc | tojson }}
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
   ],
   "card_action": {
     "type": 1,

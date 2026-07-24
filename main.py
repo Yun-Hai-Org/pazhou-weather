@@ -442,7 +442,7 @@ def weather_emoji(text):
     return "☀️"
 
 
-def build_hourly_vertical(hourly, max_len=112):
+def build_hourly_vertical(hourly, max_len=112, include_pop: bool = True):
     lines = []
     for item in hourly[:6]:
         fx_time = item.get("fxTime", "")
@@ -451,9 +451,88 @@ def build_hourly_vertical(hourly, max_len=112):
         pop = pop_value(item.get("pop"))
         weather_text = item.get("text", "")
         temp = item.get("temp", "-")
-        line = f"{format_hour(fx_time)} {weather_emoji(weather_text)}{weather_text} {temp}°C{f' {pop}%' if pop else ''}"
+        pop_suffix = f" {pop}%" if include_pop and pop else ""
+        line = (
+            f"🕐{format_hour(fx_time)} {weather_emoji(weather_text)}{weather_text} "
+            f"{temp}°C{pop_suffix}"
+        )
         lines.append(line)
     return "\n".join(lines)
+
+
+def build_card_now_lines(now_ctx: dict[str, Any]) -> tuple[str, str]:
+    text = now_ctx.get("text", "")
+    temp = now_ctx.get("temp", "-")
+    feels = now_ctx.get("feels_like", "-")
+    humidity = now_ctx.get("humidity", "-")
+    wind_dir = now_ctx.get("wind_dir", "")
+    wind_scale = now_ctx.get("wind_scale", "")
+    emoji = weather_emoji(text)
+    line1 = f"{emoji}{text}　{temp}°C　|　🤚 体感 {feels}°C"
+    line2 = f"💧 湿度 {humidity}%　|　🌬️ {wind_dir} {wind_scale}级"
+    return line1, line2
+
+
+def build_card_warning_desc(warnings_list: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for item in warnings_list:
+        title = item.get("title", "预警")
+        event = item.get("event", "")
+        level = item.get("level", "")
+        level_part = f"   {level}" if level else ""
+        event_part = f"【{event}】" if event else ""
+        lines.append(f"⚠️　{event_part}{title}{level_part}")
+    return "\n".join(lines)
+
+
+def build_card_astro_desc(astro: dict[str, Any]) -> str:
+    ctx = build_astronomy_context(astro)
+    if ctx.get("empty"):
+        return ""
+    parts: list[str] = []
+    sunrise = ctx.get("sunrise", "")
+    sunset = ctx.get("sunset", "")
+    if sunrise and sunset:
+        parts.append(f"🌅 日出 {sunrise} / 日落 {sunset}")
+    moon_phase = ctx.get("moon_phase", "")
+    if moon_phase:
+        parts.append(f"🌙 月相 {moon_phase}")
+    return "　".join(parts)
+
+
+def build_card_vertical_items(
+    now_ctx: dict[str, Any],
+    hourly: list[dict[str, Any]],
+    warnings_list: list[dict[str, Any]],
+    astro: dict[str, Any],
+) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    if warnings_list:
+        items.append(
+            {
+                "title": "🚨 气象预警",
+                "desc": build_card_warning_desc(warnings_list),
+            }
+        )
+    line1, line2 = build_card_now_lines(now_ctx)
+    items.append(
+        {
+            "title": truncate_text(line1, 26),
+            "desc": truncate_text(line2, 112),
+        }
+    )
+    hourly_desc = build_hourly_vertical(hourly, include_pop=False)
+    if hourly_desc:
+        items.append(
+            {
+                "title": "⏭️ 未来6小时",
+                "desc": hourly_desc,
+            }
+        )
+    astro_desc = build_card_astro_desc(astro)
+    if astro_desc:
+        items.append({"title": "🌓 日出日落", "desc": astro_desc})
+    return items
 
 
 def select_card_icon(hourly):
@@ -481,11 +560,23 @@ CARD_IMAGE_CDN_BASE_DEFAULT = (
     "feat/wecom-template-card-detail-page/assets/card"
 )
 
+_COVER_PLACEHOLDER_COLORS: dict[str, tuple[str, str, str]] = {
+    "sun": ("fbbf24", "1a2029", "晴"),
+    "cloud": ("94a3b8", "1a2029", "多云"),
+    "rain": ("4ea1ff", "1a2029", "雨"),
+    "thunder": ("a855f7", "1a2029", "雷雨"),
+    "snow": ("e2e8f0", "1a2029", "雪"),
+    "fog": ("cbd5e1", "1a2029", "雾"),
+}
+
+
 def icon_cover_category(icon_code: str) -> str:
     try:
         code = int(icon_code)
     except (TypeError, ValueError):
         return "sun"
+    if code in (302, 303, 304):
+        return "thunder"
     if 300 <= code <= 399:
         return "rain"
     if 400 <= code <= 499:
@@ -498,11 +589,11 @@ def icon_cover_category(icon_code: str) -> str:
 
 
 def card_cover_png_url(icon_code: str, pages_base_url: str = "") -> str:
-    if os.environ.get("CARD_IMAGE_USE_PLACEHOLDER", "").strip() == "1":
-        return (
-            "https://placehold.co/1068x455/1a2029/4ea1ff/png?text=Haizhu+Weather"
-        )
     cat = icon_cover_category(icon_code)
+    if os.environ.get("CARD_IMAGE_USE_PLACEHOLDER", "").strip() == "1":
+        bg, fg, label = _COVER_PLACEHOLDER_COLORS.get(cat, _COVER_PLACEHOLDER_COLORS["sun"])
+        text_label = urllib.parse.quote(f"天气预报 {label}")
+        return f"https://placehold.co/1068x455/{bg}/{fg}/png?text={text_label}"
     if pages_base_url:
         return f"{pages_base_url.rstrip('/')}/assets/card/{cat}.png"
     cdn_base = os.environ.get("CARD_IMAGE_CDN_BASE", CARD_IMAGE_CDN_BASE_DEFAULT).strip()
@@ -626,18 +717,20 @@ def build_template_context(
     weekday_cn = _WEEKDAY_CN[now_dt.weekday()]
     header_time = now_dt.strftime("%H:%M")
 
-    icon_code = select_card_icon(hourly)
+    icon_code = now.get("icon", "100")
     card_image_url = card_cover_png_url(icon_code, pages_base_url)
     source_icon_url = source_icon_png_url(icon_code)
     jump_url = pages_base_url or ""
 
-    hourly_desc_raw = build_hourly_vertical(hourly)
-    astro_raw = build_astronomy_lines(astronomy or {})
-    astro_desc_card = (
-        astro_raw.replace("🌅 ", "")
-        .replace("🌙 ", "")
-        .replace("🌌 暂无天文数据", "暂无数据")
-    )
+    now_ctx = {
+        "icon": now.get("icon", "100"),
+        "text": now.get("text", ""),
+        "temp": now.get("temp", "-"),
+        "feels_like": now.get("feelsLike", "-"),
+        "humidity": now.get("humidity", "-"),
+        "wind_dir": now.get("windDir", ""),
+        "wind_scale": now.get("windScale", ""),
+    }
 
     hourly_24: list[dict[str, Any]] = []
     for item in hourly[:24]:
@@ -700,6 +793,10 @@ def build_template_context(
             val = (item or {}).get("category", "") or (item or {}).get("text", "") or "暂无数据"
         life_indices.append({"name": name, "value": val})
 
+    vertical_items = build_card_vertical_items(
+        now_ctx, hourly, warnings_list, astronomy or {}
+    )
+
     return {
         "city_name": CITY_NAME,
         "header_date": header_date,
@@ -724,9 +821,9 @@ def build_template_context(
         "card_image_url": card_image_url,
         "source_icon_url": source_icon_url,
         "main_title": truncate_text(f"🌤️ {CITY_NAME}", 26),
-        "main_desc": truncate_text(f"{header_date} 周{weekday_cn} {header_time}", 30),
-        "hourly_desc": truncate_text(hourly_desc_raw, 112),
-        "astro_desc": truncate_text(astro_desc_card, 112),
+        "main_desc": truncate_text(f"📅 {header_date} 周{weekday_cn} {header_time}", 30),
+        "source_desc": "天气预报",
+        "vertical_items": vertical_items,
         "jump_url": jump_url,
     }
 
