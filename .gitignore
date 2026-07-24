@@ -9,3 +9,5 @@ venv/
 .worktrees/
 public/
 _bmad-output/
+
+.wrangler/

@@ -11,6 +11,9 @@ import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from pathlib import Path
+
 
 def esc(value):
     return html.escape(str(value), quote=False)
@@ -473,32 +476,196 @@ def select_card_icon(hourly):
     return first_by_rank[best_rank]
 
 
-def build_news_notice_card(now, hourly, astronomy, pages_base_url):
-    icon_code = select_card_icon(hourly)
+
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+
+def get_jinja_env() -> Environment:
+    return Environment(
+        loader=FileSystemLoader(_TEMPLATES_DIR),
+        autoescape=select_autoescape(
+            enabled_extensions=("html", "htm", "xml"),
+            default_for_string=False,
+        ),
+    )
+
+
+def get_jinja_env_json() -> Environment:
+    return Environment(
+        loader=FileSystemLoader(_TEMPLATES_DIR),
+        autoescape=False,
+    )
+
+
+def build_air_quality_context(aq: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not aq:
+        return None
+    category = aq.get("category", "")
+    primary = aq.get("primaryPollutant") or ""
+    primary_label = _POLLUTANT_LABEL.get(primary, primary.upper()) if primary else ""
+    health: dict[str, Any] = aq.get("health") or {}
+    advice_text = health.get("effect") or ""
+    if not advice_text:
+        advice = health.get("advice")
+        if isinstance(advice, dict):
+            advice_text = advice.get("generalPopulation") or ""
+    return {
+        "icon": _AQI_ICON.get(category, "🌫️"),
+        "aqi": aq.get("aqi", "-"),
+        "category": category,
+        "primary_label": primary_label,
+        "health_advice": advice_text,
+    }
+
+
+def build_astronomy_context(astro: dict[str, Any]) -> dict[str, Any]:
+    sun: dict[str, Any] = astro.get("sun") or {}
+    moon: dict[str, Any] = astro.get("moon") or {}
+    if not sun and not moon:
+        return {"sunrise": "", "sunset": "", "moon_phase": "", "empty": True}
+    sunrise = format_hour(sun.get("sunrise", "")) if sun.get("sunrise") else ""
+    sunset = format_hour(sun.get("sunset", "")) if sun.get("sunset") else ""
+    moon_phase = ""
+    phase_list: list[dict[str, Any]] = moon.get("moonPhase") or []
+    if phase_list:
+        moon_phase = phase_list[0].get("name", "")
+    else:
+        moon_phase = moon.get("name") or moon.get("phase") or ""
+    return {
+        "sunrise": sunrise,
+        "sunset": sunset,
+        "moon_phase": moon_phase,
+        "empty": not sunrise and not sunset and not moon_phase,
+    }
+
+
+def build_template_context(
+    now: dict[str, Any],
+    hourly: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+    indices: list[dict[str, Any]],
+    air_quality: dict[str, Any] | None,
+    astronomy: dict[str, Any] | None,
+    forecast_3d: list[dict[str, Any]] | None,
+    pages_base_url: str,
+) -> dict[str, Any]:
     now_dt = datetime.now(TZ)
     header_date = now_dt.strftime("%Y-%m-%d")
-    header_time = now_dt.strftime("%H:%M")
     weekday_cn = _WEEKDAY_CN[now_dt.weekday()]
+    header_time = now_dt.strftime("%H:%M")
+
+    icon_code = select_card_icon(hourly)
     card_image_url = f"https://cdn.jsdelivr.net/npm/qweather-icons@1.8.0/icons/{icon_code}.svg"
-    hourly_desc = build_hourly_vertical(hourly)
-    astro_desc = build_astronomy_lines(astronomy or {})
-    astro_desc = astro_desc.replace("🌅 ", "").replace("🌙 ", "").replace("🌌 暂无天文数据", "暂无数据")
-    jump_url = pages_base_url or "https://pr9898.github.io/20260709--/"
-    card = {
-        "card_type": "news_notice",
-        "source": {"icon_url": card_image_url, "desc": "和风天气", "desc_color": 0},
-        "main_title": {
-            "title": truncate_text(f"🌤️ {CITY_NAME}", 26),
-            "desc": truncate_text(f"{header_date} 周{weekday_cn} {header_time}", 30),
+    jump_url = pages_base_url or ""
+
+    hourly_desc_raw = build_hourly_vertical(hourly)
+    astro_raw = build_astronomy_lines(astronomy or {})
+    astro_desc_card = (
+        astro_raw.replace("🌅 ", "")
+        .replace("🌙 ", "")
+        .replace("🌌 暂无天文数据", "暂无数据")
+    )
+
+    hourly_24: list[dict[str, Any]] = []
+    for item in hourly[:24]:
+        fx_time = item.get("fxTime", "")
+        hourly_24.append(
+            {
+                "time": format_hour(fx_time) if fx_time else "--",
+                "icon": item.get("icon", "100"),
+                "temp": item.get("temp", "-"),
+                "text": item.get("text", ""),
+                "pop": pop_value(item.get("pop")),
+            }
+        )
+
+    forecast_list: list[dict[str, Any]] = []
+    for index, item in enumerate(forecast_3d or []):
+        fx_date = item.get("fxDate", "")
+        forecast_list.append(
+            {
+                "label": format_day_label(fx_date, index) if fx_date else ("今天" if index == 0 else "未来"),
+                "icon": item.get("iconDay", "100"),
+                "text": item.get("textDay", ""),
+                "temp_min": item.get("tempMin", "-"),
+                "temp_max": item.get("tempMax", "-"),
+            }
+        )
+
+    warnings_list: list[dict[str, Any]] = []
+    for w in warnings:
+        warnings_list.append(
+            {
+                "title": w.get("headLine") or w.get("headline") or "预警",
+                "event": (w.get("eventType") or {}).get("name", ""),
+                "level": format_warning_level(w),
+            }
+        )
+
+    indexed = index_by_type(indices)
+    life_keys = [
+        ("带伞", ""),
+        ("空调", "11"),
+        ("衣着", "3"),
+        ("紫外线", "5"),
+        ("感冒", "9"),
+        ("运动", "1"),
+        ("旅游", "6"),
+        ("舒适度", "8"),
+        ("晾晒", "14"),
+        ("防晒", "16"),
+        ("交通", "15"),
+        ("空气扩散", "10"),
+    ]
+    umbrella = build_umbrella_advice(hourly).replace("**", "")
+    life_indices: list[dict[str, str]] = []
+    for name, key in life_keys:
+        if name == "带伞":
+            val = umbrella
+        else:
+            item = indexed.get(key)
+            val = (item or {}).get("category", "") or (item or {}).get("text", "") or "暂无数据"
+        life_indices.append({"name": name, "value": val})
+
+    return {
+        "city_name": CITY_NAME,
+        "header_date": header_date,
+        "weekday_cn": weekday_cn,
+        "header_time": header_time,
+        "now": {
+            "icon": now.get("icon", "100"),
+            "text": now.get("text", ""),
+            "temp": now.get("temp", "-"),
+            "feels_like": now.get("feelsLike", "-"),
+            "humidity": now.get("humidity", "-"),
+            "wind_dir": now.get("windDir", ""),
+            "wind_scale": now.get("windScale", ""),
         },
-        "card_image": {"url": card_image_url},
-        "vertical_content_list": [
-            {"title": "未来6小时", "desc": truncate_text(hourly_desc, 112)},
-            {"title": "日出日落", "desc": truncate_text(astro_desc, 112)},
-        ],
-        "card_action": {"type": 1, "url": jump_url},
+        "hourly": hourly_24,
+        "forecast_3d": forecast_list,
+        "warnings": warnings_list,
+        "life_indices": life_indices,
+        "air_quality": build_air_quality_context(air_quality),
+        "astronomy": build_astronomy_context(astronomy or {}),
+        "icon_code": icon_code,
+        "card_image_url": card_image_url,
+        "main_title": truncate_text(f"🌤️ {CITY_NAME}", 26),
+        "main_desc": truncate_text(f"{header_date} 周{weekday_cn} {header_time}", 30),
+        "hourly_desc": truncate_text(hourly_desc_raw, 112),
+        "astro_desc": truncate_text(astro_desc_card, 112),
+        "jump_url": jump_url,
     }
-    return card
+
+
+def render_detail_html(context: dict[str, Any]) -> str:
+    env = get_jinja_env()
+    return env.get_template("detail.html.j2").render(**context)
+
+
+def render_card(context: dict[str, Any]) -> dict[str, Any]:
+    env = get_jinja_env_json()
+    return json.loads(env.get_template("card.json.j2").render(**context))
+
 
 
 def send_wecom_template_card(webhook_url, template_card):
@@ -523,118 +690,6 @@ def send_wecom_template_card_all(webhook_urls, template_card):
     if errors:
         raise RuntimeError("部分企业微信推送失败：\n" + "\n".join(errors))
 
-
-def build_detail_html(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d):
-    now_dt = datetime.now(TZ)
-    header_date = now_dt.strftime("%Y-%m-%d")
-    weekday_cn = _WEEKDAY_CN[now_dt.weekday()]
-    now_icon = now.get("icon", "100")
-    now_text = now.get("text", "")
-    now_temp = now.get("temp", "-")
-    feels = now.get("feelsLike", "-")
-    humidity = now.get("humidity", "-")
-    wind_dir = now.get("windDir", "")
-    wind_scale = now.get("windScale", "")
-    umbrella = build_umbrella_advice(hourly).replace("**", "")
-    indexed = index_by_type(indices)
-    life_keys = [("带伞", ""), ("空调", "11"), ("衣着", "3"), ("紫外线", "5"), ("感冒", "9"), ("运动", "1"), ("旅游", "6"), ("舒适度", "8"), ("晾晒", "14"), ("防晒", "16"), ("交通", "15"), ("空气扩散", "10")]
-    life_rows = ""
-    for name, key in life_keys:
-        if name == "带伞":
-            val = umbrella
-        else:
-            item = indexed.get(key)
-            val = (item or {}).get("category", "") or (item or {}).get("text", "") or "暂无数据"
-        life_rows += f"        <div class=row><b>{name}</b><span>{esc(val)}</span></div>\n"
-    hourly_cards = ""
-    for item in hourly[:24]:
-        fx_time = item.get("fxTime", "")
-        t = format_hour(fx_time) if fx_time else "--"
-        ic = item.get("icon", "100")
-        tp = item.get("temp", "-")
-        tx = item.get("text", "")
-        pop = pop_value(item.get("pop"))
-        pop_html = f"<div class=p>💧{pop}%</div>" if pop else ""
-        hourly_cards += f"        <div class=h><div class=d>{t}</div><i class=qi-{ic}></i><div class=t>{tp}°</div><div class=d>{esc(tx)}</div>{pop_html}</div>\n"
-    if not hourly_cards:
-        hourly_cards = '        <div class=sec-empty>暂无逐时数据</div>\n'
-    day_rows = ""
-    for index, item in enumerate(forecast_3d or []):
-        fx_date = item.get("fxDate", "")
-        label = format_day_label(fx_date, index) if fx_date else ("今天" if index == 0 else "未来")
-        ic = item.get("iconDay", "100")
-        tx = item.get("textDay", "")
-        tmn = item.get("tempMin", "-")
-        tmx = item.get("tempMax", "-")
-        day_rows += f"        <div class=day><div class=lab>{label}</div><div class=ico><i class=qi-{ic}></i></div><div class=txt>{tx}</div><div class=tmp>{tmn}-{tmx}°C</div></div>\n"
-    if not day_rows:
-        day_rows = '        <div class=sec-empty>暂无 3 天预报数据</div>\n'
-    aq_html = build_air_quality_lines(air_quality).replace("**", "").replace("　", " ").replace(chr(96), "")
-    astro_html = build_astronomy_lines(astronomy or {}).replace("　", " ")
-    if not warnings:
-        warn_html = "<div class=sec-empty>✅ 暂无气象预警</div>"
-    else:
-        warn_items = ""
-        for w in warnings:
-            title = w.get("headLine") or w.get("headline") or "预警"
-            event = (w.get("eventType") or {}).get("name", "")
-            level = format_warning_level(w)
-            chip = f"<span class=chip>{level}</span> " if level else ""
-            event_chip = f"【{event}】" if event else ""
-            warn_items += f"        <div class=warn>⚠️ {event_chip}{esc(title)} {chip}</div>\n"
-        warn_html = warn_items
-    css = """:root{--bg:#0f1419;--card:#1a2029;--txt:#e6edf3;--sub:#8b98a5;--acc:#4ea1ff;--warn:#ffb454;--rain:#5ac8fa}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.5;padding:12px;max-width:600px;margin:0 auto}
-h2{font-size:15px;color:var(--sub);margin:18px 0 8px;font-weight:600}
-.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px}
-.now{text-align:center;padding:20px 12px}
-.now .icon{font-size:64px;line-height:1}
-.now .temp{font-size:54px;font-weight:700;margin-top:6px}
-.now .text{font-size:18px;color:var(--sub);margin-top:2px}
-.now .meta{color:var(--sub);margin-top:10px;font-size:13px}
-.scroll{display:flex;overflow-x:auto;gap:10px;padding-bottom:4px}
-.scroll .h{flex:0 0 66px;text-align:center;background:var(--bg);border-radius:10px;padding:10px 4px}
-.scroll .h .t{font-size:20px;margin:4px 0}
-.scroll .h .d{font-size:12px;color:var(--sub)}
-.scroll .h .p{font-size:12px;color:var(--rain);margin-top:2px}
-.days .day{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #2a313c}
-.days .day:last-child{border-bottom:none}
-.days .lab{color:var(--sub);width:54px}
-.days .ico{font-size:22px;width:38px;text-align:center}
-.days .txt{flex:1;padding:0 8px;font-size:14px}
-.days .tmp{font-weight:600}
-.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #2a313c}
-.row:last-child{border-bottom:none}
-.row b{color:var(--txt);font-weight:500;width:72px}
-.row span{color:var(--sub);text-align:right;flex:1}
-.warn{color:var(--warn);padding:8px 0;border-bottom:1px solid #2a313c}
-.warn:last-child{border-bottom:none}
-.chip{background:var(--warn);color:#000;border-radius:4px;padding:0 6px;font-size:12px;margin-left:4px}
-.sec-empty{color:var(--sub);padding:8px 0}
-.qi{font-style:normal}"""
-    html = f"""<!DOCTYPE html>
-<html lang=zh-CN>
-<head><meta charset=utf-8><meta name=viewport content=\"width=device-width, initial-scale=1\"><meta name=robots content=noindex><title>{CITY_NAME} 天气详情</title><link rel=stylesheet href=\"https://cdn.jsdelivr.net/npm/qweather-icons@1.8.0/font/qweather-icons.css\"><style>
-{css}
-</style></head>
-<body>
-<div class=\"card now\"><i class=\"qi-{now_icon}\" style=\"font-size:64px\"></i><div class=temp>{now_temp}°C</div><div class=text>{esc(now_text)}</div><div class=meta>体感 {feels}°C · 湿度 {humidity}% · {wind_dir}{wind_scale}级</div></div>
-<h2>⏰ 未来 24 小时</h2><div class=card><div class=scroll>
-{hourly_cards}        </div></div>
-<h2>🗓️ 未来 3 天</h2><div class=\"card days\">
-{day_rows}        </div>
-<h2>🌫️ 空气质量</h2><div class=card>{aq_html}</div>
-<h2>🌅 日出日落 · 月相</h2><div class=card>{astro_html}</div>
-<h2>🚨 气象预警</h2><div class=card>{warn_html}</div>
-<h2>💡 生活提醒</h2><div class=card>
-{life_rows}        </div>
-<div class=meta style=\"text-align:center;padding:16px 0\">{header_date} 周{weekday_cn} · {CITY_NAME} · 数据来自和风天气</div>
-</body>
-</html>"""
-    return html
-
-
 def main() -> None:
     api_key = require_env("QWEATHER_API_KEY")
     api_host = require_env("QWEATHER_API_HOST")
@@ -648,8 +703,9 @@ def main() -> None:
     astronomy = fetch_astronomy(api_host, api_key)
     forecast_3d = fetch_3d_forecast(api_host, api_key)
     pages_base_url = os.environ.get("PAGES_BASE_URL", "").strip()
+    context = build_template_context(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d, pages_base_url)
     try:
-        html = build_detail_html(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d)
+        html = render_detail_html(context)
         output_dir = "public"
         os.makedirs(output_dir, exist_ok=True)
         with open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f:
@@ -657,7 +713,7 @@ def main() -> None:
         print(f"Detail page written to {output_dir}/index.html")
     except Exception as exc:
         print(f"⚠️  详情页生成失败（{exc}），跳过；继续推送卡片")
-    card = build_news_notice_card(now, hourly, astronomy, pages_base_url)
+    card = render_card(context)
     send_wecom_template_card_all(webhook_urls, card)
     print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
 

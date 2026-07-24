@@ -1,0 +1,6 @@
+[project]
+name = "weather-report"
+version = "0.1.0"
+description = "广州海珠琶洲天气预报企业微信推送与详情页"
+requires-python = ">=3.10"
+dependencies = ["jinja2>=3.1"]
