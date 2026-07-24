@@ -15,6 +15,8 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pathlib import Path
 
+from PIL import Image
+
 
 def esc(value):
     return html.escape(str(value), quote=False)
@@ -514,13 +516,6 @@ def build_card_vertical_items(
                 "desc": build_card_warning_desc(warnings_list),
             }
         )
-    line1, line2 = build_card_now_lines(now_ctx)
-    items.append(
-        {
-            "title": truncate_text(line1, 26),
-            "desc": truncate_text(line2, 112),
-        }
-    )
     hourly_desc = build_hourly_vertical(hourly, include_pop=False)
     if hourly_desc:
         items.append(
@@ -529,6 +524,13 @@ def build_card_vertical_items(
                 "desc": hourly_desc,
             }
         )
+    line1, line2 = build_card_now_lines(now_ctx)
+    items.append(
+        {
+            "title": truncate_text(line1, 26),
+            "desc": truncate_text(line2, 112),
+        }
+    )
     astro_desc = build_card_astro_desc(astro)
     if astro_desc:
         items.append({"title": "🌓 日出日落", "desc": astro_desc})
@@ -556,17 +558,29 @@ def select_card_icon(hourly):
     return first_by_rank[best_rank]
 
 CARD_IMAGE_CDN_BASE_DEFAULT = (
-    "https://cdn.jsdelivr.net/gh/pr9898/20260709--/"
-    "feat/wecom-template-card-detail-page/assets/card"
+    "https://cdn.jsdelivr.net/gh/pr9898/20260709--"
+    "@feat/wecom-template-card-detail-page/assets/card"
 )
 
 _COVER_PLACEHOLDER_COLORS: dict[str, tuple[str, str, str]] = {
-    "sun": ("fbbf24", "1a2029", "晴"),
-    "cloud": ("94a3b8", "1a2029", "多云"),
-    "rain": ("4ea1ff", "1a2029", "雨"),
-    "thunder": ("a855f7", "1a2029", "雷雨"),
-    "snow": ("e2e8f0", "1a2029", "雪"),
-    "fog": ("cbd5e1", "1a2029", "雾"),
+    "sun": ("fbbf24", "1a2029", "Sun"),
+    "cloud": ("94a3b8", "1a2029", "Cloud"),
+    "rain": ("4ea1ff", "1a2029", "Rain"),
+    "thunder": ("a855f7", "1a2029", "Thunder"),
+    "snow": ("e2e8f0", "1a2029", "Snow"),
+    "fog": ("cbd5e1", "1a2029", "Fog"),
+}
+
+_CARD_COVER_WIDTH = 1024
+_CARD_COVER_HEIGHT = 455
+_CARD_COVER_CATEGORIES = ("sun", "cloud", "rain", "thunder", "snow", "fog")
+_CARD_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
+    "sun": ((251, 191, 36), (249, 115, 22)),
+    "cloud": ((148, 163, 184), (71, 85, 105)),
+    "rain": ((56, 189, 248), (29, 78, 216)),
+    "thunder": ((168, 85, 247), (49, 46, 129)),
+    "snow": ((224, 242, 254), (148, 163, 184)),
+    "fog": ((203, 213, 225), (100, 116, 139)),
 }
 
 
@@ -588,14 +602,12 @@ def icon_cover_category(icon_code: str) -> str:
     return "sun"
 
 
-def card_cover_png_url(icon_code: str, pages_base_url: str = "") -> str:
+def card_cover_png_url(icon_code: str) -> str:
     cat = icon_cover_category(icon_code)
     if os.environ.get("CARD_IMAGE_USE_PLACEHOLDER", "").strip() == "1":
         bg, fg, label = _COVER_PLACEHOLDER_COLORS.get(cat, _COVER_PLACEHOLDER_COLORS["sun"])
-        text_label = urllib.parse.quote(f"天气预报 {label}")
-        return f"https://placehold.co/1068x455/{bg}/{fg}/png?text={text_label}"
-    if pages_base_url:
-        return f"{pages_base_url.rstrip('/')}/assets/card/{cat}.png"
+        text_label = urllib.parse.quote(f"Weather+{label}")
+        return (f"https://placehold.co/{_CARD_COVER_WIDTH}x{_CARD_COVER_HEIGHT}/{bg}/{fg}/png?text={text_label}")
     cdn_base = os.environ.get("CARD_IMAGE_CDN_BASE", CARD_IMAGE_CDN_BASE_DEFAULT).strip()
     return f"{cdn_base.rstrip('/')}/{cat}.png"
 
@@ -630,13 +642,26 @@ def ensure_card_assets() -> None:
     root = Path(__file__).resolve().parent
     src_dir = root / "assets" / "card"
     dst_dir = root / "public" / "assets" / "card"
-    if not src_dir.is_dir():
-        return
+    src_dir.mkdir(parents=True, exist_ok=True)
+    for category in _CARD_COVER_CATEGORIES:
+        png_path = src_dir / f"{category}.png"
+        regen = not png_path.is_file()
+        if not regen:
+            with Image.open(png_path) as ex:
+                regen = ex.size != (_CARD_COVER_WIDTH, _CARD_COVER_HEIGHT)
+        if regen:
+            top, bottom = _CARD_GRADIENTS.get(category, _CARD_GRADIENTS["sun"])
+            img = Image.new("RGB", (_CARD_COVER_WIDTH, _CARD_COVER_HEIGHT))
+            px = img.load()
+            for y in range(_CARD_COVER_HEIGHT):
+                r = y / max(_CARD_COVER_HEIGHT - 1, 1)
+                col = tuple(int(top[i] + (bottom[i]-top[i])*r) for i in range(3))
+                for x in range(_CARD_COVER_WIDTH):
+                    px[x,y]=col
+            img.save(png_path)
     dst_dir.mkdir(parents=True, exist_ok=True)
     for png in sorted(src_dir.glob("*.png")):
-        dest = dst_dir / png.name
-        if not dest.exists():
-            shutil.copy2(png, dest)
+        shutil.copy2(png, dst_dir / png.name)
 
 
 
@@ -718,7 +743,7 @@ def build_template_context(
     header_time = now_dt.strftime("%H:%M")
 
     icon_code = now.get("icon", "100")
-    card_image_url = card_cover_png_url(icon_code, pages_base_url)
+    card_image_url = card_cover_png_url(icon_code)
     source_icon_url = source_icon_png_url(icon_code)
     jump_url = pages_base_url or ""
 
@@ -873,6 +898,7 @@ def main() -> None:
     air_quality = fetch_air_quality(api_host, api_key)
     astronomy = fetch_astronomy(api_host, api_key)
     forecast_3d = fetch_3d_forecast(api_host, api_key)
+    ensure_card_assets()
     pages_base_url = os.environ.get("PAGES_BASE_URL", "").strip()
     context = build_template_context(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d, pages_base_url)
     try:
@@ -882,7 +908,6 @@ def main() -> None:
         with open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(html)
         print(f"Detail page written to {output_dir}/index.html")
-        ensure_card_assets()
     except Exception as exc:
         print(f"⚠️  详情页生成失败（{exc}），跳过；继续推送卡片")
     card = render_card(context)

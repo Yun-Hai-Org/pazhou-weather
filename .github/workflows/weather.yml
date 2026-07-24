@@ -15,12 +15,14 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: uv sync
+      # PAGES_BASE_URL / deploy use org vars CF_PAGES_URL and CF_PAGES_PROJECT (and CF secrets).
       - name: Send weather report and build detail page
         env:
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
           PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
+          CARD_IMAGE_CDN_BASE: https://cdn.jsdelivr.net/gh/pr9898/20260709--@feat/wecom-template-card-detail-page/assets/card
         run: uv run python main.py
       - name: Deploy to Cloudflare Pages
         if: always()
