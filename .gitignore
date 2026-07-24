@@ -4,3 +4,10 @@ __pycache__/
 .venv/
 venv/
 .hooks/
+.claude/settings.local.json
+.claude/worktrees/
+.worktrees/
+public/
+_bmad-output/
+
+.wrangler/

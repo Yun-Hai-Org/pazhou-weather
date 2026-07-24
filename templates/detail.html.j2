@@ -1,0 +1,89 @@
+{% autoescape true %}
+<!DOCTYPE html>
+<html lang=zh-CN>
+<head><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1"><meta name=robots content=noindex><title>{{ city_name }} 天气详情</title><link rel=stylesheet href="https://cdn.jsdelivr.net/npm/qweather-icons@1.8.0/font/qweather-icons.css"><style>
+:root{--bg:#0f1419;--card:#1a2029;--txt:#e6edf3;--sub:#8b98a5;--acc:#4ea1ff;--warn:#ffb454;--rain:#5ac8fa}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.5;padding:12px;max-width:600px;margin:0 auto}
+h2{font-size:15px;color:var(--sub);margin:18px 0 8px;font-weight:600}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px}
+.now{text-align:center;padding:20px 12px}
+.now .temp{font-size:54px;font-weight:700;margin-top:6px}
+.now .text{font-size:18px;color:var(--sub);margin-top:2px}
+.now .meta{color:var(--sub);margin-top:10px;font-size:13px}
+.scroll{display:flex;overflow-x:auto;gap:10px;padding-bottom:4px}
+.scroll .h{flex:0 0 66px;text-align:center;background:var(--bg);border-radius:10px;padding:10px 4px}
+.scroll .h .t{font-size:20px;margin:4px 0}
+.scroll .h .d{font-size:12px;color:var(--sub)}
+.scroll .h .p{font-size:12px;color:var(--rain);margin-top:2px}
+.days .day{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #2a313c}
+.days .day:last-child{border-bottom:none}
+.days .lab{color:var(--sub);width:54px}
+.days .ico{font-size:22px;width:38px;text-align:center}
+.days .txt{flex:1;padding:0 8px;font-size:14px}
+.days .tmp{font-weight:600}
+.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #2a313c}
+.row:last-child{border-bottom:none}
+.row b{color:var(--txt);font-weight:500;width:72px}
+.row span{color:var(--sub);text-align:right;flex:1}
+.warn{color:var(--warn);padding:8px 0;border-bottom:1px solid #2a313c}
+.warn:last-child{border-bottom:none}
+.chip{background:var(--warn);color:#000;border-radius:4px;padding:0 6px;font-size:12px;margin-left:4px}
+.sec-empty{color:var(--sub);padding:8px 0}
+.qi{font-style:normal}
+</style></head>
+<body>
+<div class="card now"><i class="qi-{{ now.icon }}" style="font-size:64px"></i><div class=temp>{{ now.temp }}°C</div><div class=text>{{ now.text }}</div><div class=meta>体感 {{ now.feels_like }}°C · 湿度 {{ now.humidity }}% · {{ now.wind_dir }}{{ now.wind_scale }}级</div></div>
+<h2>⏰ 未来 24 小时</h2><div class=card><div class=scroll>
+{% if hourly %}
+{% for item in hourly %}
+        <div class=h><div class=d>{{ item.time }}</div><i class="qi-{{ item.icon }}"></i><div class=t>{{ item.temp }}°</div><div class=d>{{ item.text }}</div>{% if item.pop %}<div class=p>💧{{ item.pop }}%</div>{% endif %}</div>
+{% endfor %}
+{% else %}
+        <div class=sec-empty>暂无逐时数据</div>
+{% endif %}
+        </div></div>
+<h2>🗓️ 未来 3 天</h2><div class="card days">
+{% if forecast_3d %}
+{% for item in forecast_3d %}
+        <div class=day><div class=lab>{{ item.label }}</div><div class=ico><i class="qi-{{ item.icon }}"></i></div><div class=txt>{{ item.text }}</div><div class=tmp>{{ item.temp_min }}-{{ item.temp_max }}°C</div></div>
+{% endfor %}
+{% else %}
+        <div class=sec-empty>暂无 3 天预报数据</div>
+{% endif %}
+        </div>
+<h2>🌫️ 空气质量</h2><div class=card>
+{% if air_quality %}
+{{ air_quality.icon }} AQI {{ air_quality.aqi }} {{ air_quality.category }}{% if air_quality.primary_label %} 主要污染物 {{ air_quality.primary_label }}{% endif %}
+{% if air_quality.health_advice %}
+<br>🩺 {{ air_quality.health_advice }}
+{% endif %}
+{% else %}
+🌫️ 暂无空气质量数据
+{% endif %}
+</div>
+<h2>🌅 日出日落 · 月相</h2><div class=card>
+{% if astronomy.empty %}
+🌌 暂无天文数据
+{% else %}
+{% if astronomy.sunrise and astronomy.sunset %}🌅 日出 {{ astronomy.sunrise }} / 日落 {{ astronomy.sunset }}{% endif %}{% if astronomy.moon_phase %}{% if astronomy.sunrise %} {% endif %}🌙 月相 {{ astronomy.moon_phase }}{% endif %}
+{% endif %}
+</div>
+<h2>🚨 气象预警</h2><div class=card>
+{% if warnings %}
+{% for w in warnings %}
+        <div class=warn>⚠️ {% if w.event %}【{{ w.event }}】{% endif %}{{ w.title }}{% if w.level %} <span class=chip>{{ w.level }}</span>{% endif %}</div>
+{% endfor %}
+{% else %}
+<div class=sec-empty>✅ 暂无气象预警</div>
+{% endif %}
+</div>
+<h2>💡 生活提醒</h2><div class=card>
+{% for item in life_indices %}
+        <div class=row><b>{{ item.name }}</b><span>{{ item.value }}</span></div>
+{% endfor %}
+        </div>
+<div class=meta style="text-align:center;padding:16px 0">{{ header_date }} 周{{ weekday_cn }} · {{ city_name }} · 数据来自和风天气</div>
+</body>
+</html>
+{% endautoescape %}

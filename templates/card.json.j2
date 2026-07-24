@@ -1,0 +1,28 @@
+{
+  "card_type": "news_notice",
+  "source": {
+    "icon_url": {{ source_icon_url | tojson }},
+    "desc": {{ source_desc | tojson }},
+    "desc_color": 0
+  },
+  "main_title": {
+    "title": {{ main_title | tojson }},
+    "desc": {{ main_desc | tojson }}
+  },
+  "card_image": {
+    "url": {{ card_image_url | tojson }},
+    "aspect_ratio": 2.25
+  },
+  "vertical_content_list": [
+{% for item in vertical_items %}
+    {
+      "title": {{ item.title | tojson }},
+      "desc": {{ item.desc | tojson }}
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+  ],
+  "card_action": {
+    "type": 1,
+    "url": {{ jump_url | tojson }}
+  }
+}

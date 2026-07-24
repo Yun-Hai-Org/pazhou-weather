@@ -1,77 +1,104 @@
 # 企微天气预报推送
 
-每天北京时间 **05:00**、**16:00** 自动向企业微信群推送广州天气预报，包括：
+每天北京时间 **05:50**、**16:50** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
 
-- 实况天气
-- 未来 6 小时逐小时预报
-- 未来 24 小时概略
+- 卡片配图（和风官方图标，按未来 6 小时主导天气自动选择）
+- 小时预报 + 日出日落摘要
+- 点击跳转手机端详情页（7 板块完整信息）
+
+## 架构
+
+- **定时**：Cloudflare Worker Cron（UTC `50 21 * * *` / `50 8 * * *`，对应北京 05:50 / 16:50）通过 `repository_dispatch` 触发 GitHub Actions（`event_type: weather-report`）
+- **构建**：GHA 拉取和风天气 → Jinja2 渲染企业微信卡片 JSON 与详情页 HTML → 推送企业微信 → 部署到 Cloudflare Pages
+- **模板**：`templates/detail.html.j2`（详情页）、`templates/card.json.j2`（企业微信卡片）
+
+## 详情页
+
+由 `main.py` 使用 Jinja2 模板将和风天气 API 数据渲染为单文件静态 HTML（手机端优先、深色主题、内联 CSS、和风图标字体 CDN），经 GitHub Actions 部署到 **Cloudflare Pages**。详情页 7 板块：
+
+- 当前天气（大字）
+- 未来 24 小时逐时（横向滑动）
 - 未来 3 天预报
-- 灾害天气预警
 - 空气质量
+- 日出日落 + 月相
+- 气象预警
 - 生活提醒（带伞、空调、衣着、紫外线、感冒、运动、旅游、舒适度、晾晒、防晒、交通、空气扩散）
-- 天文数据（日出日落、月相）
+
+API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不暴露 QWEATHER_API_KEY。
 
 ## 前置准备
 
 ### 1. 和风天气
 
 1. 注册 [和风天气开发者](https://dev.qweather.com/)
-2. 创建项目，获取 **API Key** 和 **API Host**（形如 `xxx.qweatherapi.com`）
+2. 创建项目，获取 **API Key** 和 **API Host**（形如 xxx.qweatherapi.com）
 3. 免费额度每月 5 万次，本项目每天约 16 次请求，远低于限额
 
 ### 2. 企业微信群机器人
 
 1. 在企业微信群中添加「自定义机器人」
 2. 复制完整的 Webhook URL
-3. 如需同时推送到多个群/多个机器人，将多个 Webhook URL 用英文逗号（`,`）拼接在同一个
-   `WECOM_WEBHOOK_URL` 中即可，例如：
+3. 如需同时推送到多个群/多个机器人，将多个 Webhook URL 用英文逗号（,）拼接在同一个 WECOM_WEBHOOK_URL 中即可
 
-   ```bash
-   WECOM_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=aaa,https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=bbb"
-   ```
+### 3. Cloudflare Pages
 
-   程序会依次向每个地址推送同样的天气播报内容；单个地址推送失败不影响其他地址。
+在 GitHub **Settings - Secrets and variables - Actions** 中配置：
+
+| 类型 | 名称 | 说明 |
+| ---- | ---- | ---- |
+| Secret | QWEATHER_API_KEY | 和风天气 API Key |
+| Secret | QWEATHER_API_HOST | 和风天气 API Host |
+| Secret | WECOM_WEBHOOK_URL | 企业微信群机器人 Webhook（多个用英文逗号分隔） |
+| Secret | CLOUDFLARE_API_TOKEN | Cloudflare API Token（Pages 部署权限） |
+| Secret | CLOUDFLARE_ACCOUNT_ID | Cloudflare Account ID |
+| Variable | CF_PAGES_URL | Cloudflare Pages 站点 URL（卡片跳转地址） |
+| Variable | CF_PAGES_PROJECT | Cloudflare Pages 项目名称 |
+
+### 4. Cloudflare Worker 定时触发
+
+Worker 位于 `workers/weather-cron/`，在北京时间 05:50 / 16:50 向 GitHub 发送 `repository_dispatch`。
+
+部署前设置 secrets（`wrangler secret put`）：
+
+| Secret | 说明 |
+| ------ | ---- |
+| GH_PAT | GitHub Personal Access Token（`repo` 权限，可触发 workflow） |
+| GH_OWNER | GitHub 仓库所有者 |
+| GH_REPO | GitHub 仓库名 |
+
+```bash
+cd workers/weather-cron
+bunx wrangler deploy
+bunx wrangler secret put GH_PAT
+bunx wrangler secret put GH_OWNER
+bunx wrangler secret put GH_REPO
+```
 
 ## 本地试跑
 
-无需安装第三方依赖（Python 3.10+）。
-
 ```bash
+uv sync
 export QWEATHER_API_KEY="你的API_KEY"
 export QWEATHER_API_HOST="你的API_HOST"
 export WECOM_WEBHOOK_URL="你的企业微信Webhook"
+export PAGES_BASE_URL="https://你的.pages.dev/"
 
 ./run.sh
 ```
 
-## 部署到 GitHub Actions
+## GitHub Actions
 
-1. 将本仓库 push 到 GitHub：
-
-```bash
-git remote add origin <你的仓库地址>
-git push -u origin main
-```
-
-2. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 中添加：
-
-| Secret              | 说明                         |
-| ------------------- | ---------------------------- |
-| `QWEATHER_API_KEY`  | 和风天气 API Key             |
-| `QWEATHER_API_HOST` | 和风天气 API Host            |
-| `WECOM_WEBHOOK_URL` | 企业微信群机器人 Webhook URL（多个用英文逗号分隔） |
-
-3. 在 **Actions** 页手动运行 `Weather Report` workflow 验证，或等待定时触发。
+workflow 由 Cloudflare Worker 定时 `repository_dispatch` 或手动 `workflow_dispatch` 触发，将 `public/` 部署到 Cloudflare Pages。
 
 ## 定时说明
 
-| 北京时间 | UTC cron     |
-| -------- | ------------ |
-| 05:00    | `0 21 * * *` |
-| 16:00    | `0 8 * * *`  |
+| 北京时间 | UTC cron | 触发方式 |
+| -------- | -------- | -------- |
+| 05:50 | 50 21 * * * | CF Worker → GHA |
+| 16:50 | 50 8 * * * | CF Worker → GHA |
 
 ## 费用
 
 - 和风天气：每月 5 万次内免费
-- GitHub Actions：公开仓库免费
+- GitHub Actions / Cloudflare Workers / Pages：免费额度内免费
 - 企业微信机器人：免费

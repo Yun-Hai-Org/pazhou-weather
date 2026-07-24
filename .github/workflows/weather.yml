@@ -1,9 +1,8 @@
 name: Weather Report
 
 on:
-  schedule:
-    - cron: "45 20 * * *"
-    - cron: "45 7 * * *"
+  repository_dispatch:
+    types: [weather-report]
   workflow_dispatch:
 
 jobs:
@@ -11,10 +10,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Send weather report
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync
+      # PAGES_BASE_URL / deploy use org vars CF_PAGES_URL and CF_PAGES_PROJECT (and CF secrets).
+      - name: Build detail page and assets (no send)
+        env:
+          WECOM_SKIP_SEND: "1"
+          QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
+          QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+          PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
+        run: uv run python main.py
+      - name: Deploy to Cloudflare Pages
+        if: always()
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: ${{ vars.CF_PAGES_PROJECT }}
+          directory: public
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+      - name: Send WeCom weather card
         env:
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
-        run: ./run.sh
+          PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
+          CARD_IMAGE_CDN_BASE: ${{ vars.CF_PAGES_URL }}/assets/card
+        run: uv run python main.py
