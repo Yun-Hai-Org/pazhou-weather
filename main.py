@@ -598,8 +598,13 @@ def card_cover_png_url(icon_code: str) -> str:
         bg, fg, label = _COVER_PLACEHOLDER_COLORS.get(cat, _COVER_PLACEHOLDER_COLORS["sun"])
         text_label = urllib.parse.quote(f"Weather+{label}")
         return (f"https://placehold.co/{_CARD_COVER_WIDTH}x{_CARD_COVER_HEIGHT}/{bg}/{fg}/png?text={text_label}")
-    cdn_base = os.environ.get("CARD_IMAGE_CDN_BASE", CARD_IMAGE_CDN_BASE_DEFAULT).strip()
-    return f"{cdn_base.rstrip('/')}/{cat}.png"
+    cdn_base = os.environ.get("CARD_IMAGE_CDN_BASE", "").strip()
+    if cdn_base:
+        return f"{cdn_base.rstrip('/')}/{cat}.png"
+    pages_base = os.environ.get("PAGES_BASE_URL", "").strip()
+    if pages_base:
+        return f"{pages_base.rstrip('/')}/assets/card/{cat}.png"
+    return f"{CARD_IMAGE_CDN_BASE_DEFAULT.rstrip('/')}/{cat}.png"
 
 
 def source_icon_png_url(icon_code: str) -> str:
@@ -888,8 +893,11 @@ def main() -> None:
     except Exception as exc:
         print(f"⚠️  详情页生成失败（{exc}），跳过；继续推送卡片")
     card = render_card(context)
-    send_wecom_template_card_all(webhook_urls, card)
-    print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
+    if os.environ.get("WECOM_SKIP_SEND", "").strip() != "1":
+        send_wecom_template_card_all(webhook_urls, card)
+        print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
+    else:
+        print("WECOM_SKIP_SEND=1: skipped WeCom template card send.")
 
 
 if __name__ == "__main__":
