@@ -1,6 +1,11 @@
 # Python 项目 CI — 接入 Yun-Hai-Org/ci-templates 中心化模板
 # 参考：2020717-ci-templates/README.md Quick Start / templates/python-ci.yml
+# security scan 需 security-events: write；仓库须在 Yun-Hai-Org 下，且 org Actions workflow permissions 允许写入 security events
 name: CI
+
+permissions:
+  contents: read
+  security-events: write
 
 on:
   pull_request:
@@ -9,6 +14,9 @@ on:
 
 jobs:
   ci:
+    permissions:
+      contents: read
+      security-events: write
     uses: Yun-Hai-Org/ci-templates/.github/workflows/standard-ci.yml@main
     with:
       project-type: "python"
