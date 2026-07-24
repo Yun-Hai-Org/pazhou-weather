@@ -15,7 +15,6 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pathlib import Path
 
-from PIL import Image
 
 
 def esc(value):
@@ -573,15 +572,6 @@ _COVER_PLACEHOLDER_COLORS: dict[str, tuple[str, str, str]] = {
 
 _CARD_COVER_WIDTH = 1024
 _CARD_COVER_HEIGHT = 455
-_CARD_COVER_CATEGORIES = ("sun", "cloud", "rain", "thunder", "snow", "fog")
-_CARD_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
-    "sun": ((251, 191, 36), (249, 115, 22)),
-    "cloud": ((148, 163, 184), (71, 85, 105)),
-    "rain": ((56, 189, 248), (29, 78, 216)),
-    "thunder": ((168, 85, 247), (49, 46, 129)),
-    "snow": ((224, 242, 254), (148, 163, 184)),
-    "fog": ((203, 213, 225), (100, 116, 139)),
-}
 
 
 def icon_cover_category(icon_code: str) -> str:
@@ -642,26 +632,13 @@ def ensure_card_assets() -> None:
     root = Path(__file__).resolve().parent
     src_dir = root / "assets" / "card"
     dst_dir = root / "public" / "assets" / "card"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    for category in _CARD_COVER_CATEGORIES:
-        png_path = src_dir / f"{category}.png"
-        regen = not png_path.is_file()
-        if not regen:
-            with Image.open(png_path) as ex:
-                regen = ex.size != (_CARD_COVER_WIDTH, _CARD_COVER_HEIGHT)
-        if regen:
-            top, bottom = _CARD_GRADIENTS.get(category, _CARD_GRADIENTS["sun"])
-            img = Image.new("RGB", (_CARD_COVER_WIDTH, _CARD_COVER_HEIGHT))
-            px = img.load()
-            for y in range(_CARD_COVER_HEIGHT):
-                r = y / max(_CARD_COVER_HEIGHT - 1, 1)
-                col = tuple(int(top[i] + (bottom[i]-top[i])*r) for i in range(3))
-                for x in range(_CARD_COVER_WIDTH):
-                    px[x,y]=col
-            img.save(png_path)
+    if not src_dir.is_dir():
+        return
     dst_dir.mkdir(parents=True, exist_ok=True)
     for png in sorted(src_dir.glob("*.png")):
-        shutil.copy2(png, dst_dir / png.name)
+        dest = dst_dir / png.name
+        if not dest.exists():
+            shutil.copy2(png, dest)
 
 
 
