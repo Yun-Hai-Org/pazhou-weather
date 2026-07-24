@@ -468,7 +468,7 @@ def build_card_now_lines(now_ctx: dict[str, Any]) -> tuple[str, str]:
     wind_dir = now_ctx.get("wind_dir", "")
     wind_scale = now_ctx.get("wind_scale", "")
     emoji = weather_emoji(text)
-    line1 = f"{emoji}{text}　{temp}°C　|　🤚 体感 {feels}°C"
+    line1 = f"{emoji} {text}　{temp}°C　|　🤚 体感 {feels}°C"
     line2 = f"💧 湿度 {humidity}%　|　🌬️ {wind_dir} {wind_scale}级"
     return line1, line2
 
