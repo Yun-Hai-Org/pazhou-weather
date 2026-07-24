@@ -515,6 +515,13 @@ def build_card_vertical_items(
                 "desc": build_card_warning_desc(warnings_list),
             }
         )
+    line1, line2 = build_card_now_lines(now_ctx)
+    items.append(
+        {
+            "title": "🌡️ 天气实况",
+            "desc": truncate_text(line1 + "\n" + line2, 112),
+        }
+    )
     hourly_desc = build_hourly_vertical(hourly, include_pop=False)
     if hourly_desc:
         items.append(
@@ -523,13 +530,6 @@ def build_card_vertical_items(
                 "desc": hourly_desc,
             }
         )
-    line1, line2 = build_card_now_lines(now_ctx)
-    items.append(
-        {
-            "title": truncate_text(line1, 26),
-            "desc": truncate_text(line2, 112),
-        }
-    )
     astro_desc = build_card_astro_desc(astro)
     if astro_desc:
         items.append({"title": "🌓 日出日落", "desc": astro_desc})
