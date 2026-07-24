@@ -3,6 +3,7 @@ import html
 import json
 import os
 import re
+import shutil
 from typing import Any
 import sys
 import urllib.error
@@ -475,6 +476,77 @@ def select_card_icon(hourly):
     best_rank = max(first_by_rank)
     return first_by_rank[best_rank]
 
+CARD_IMAGE_CDN_BASE_DEFAULT = (
+    "https://cdn.jsdelivr.net/gh/pr9898/20260709--/"
+    "feat/wecom-template-card-detail-page/assets/card"
+)
+
+def icon_cover_category(icon_code: str) -> str:
+    try:
+        code = int(icon_code)
+    except (TypeError, ValueError):
+        return "sun"
+    if 300 <= code <= 399:
+        return "rain"
+    if 400 <= code <= 499:
+        return "snow"
+    if 500 <= code <= 515:
+        return "fog"
+    if code in (101, 102, 103, 104, 151, 152, 153, 154):
+        return "cloud"
+    return "sun"
+
+
+def card_cover_png_url(icon_code: str, pages_base_url: str = "") -> str:
+    if os.environ.get("CARD_IMAGE_USE_PLACEHOLDER", "").strip() == "1":
+        return (
+            "https://placehold.co/1068x455/1a2029/4ea1ff/png?text=Haizhu+Weather"
+        )
+    cat = icon_cover_category(icon_code)
+    if pages_base_url:
+        return f"{pages_base_url.rstrip('/')}/assets/card/{cat}.png"
+    cdn_base = os.environ.get("CARD_IMAGE_CDN_BASE", CARD_IMAGE_CDN_BASE_DEFAULT).strip()
+    return f"{cdn_base.rstrip('/')}/{cat}.png"
+
+
+def source_icon_png_url(icon_code: str) -> str:
+    try:
+        code = int(icon_code)
+    except (TypeError, ValueError):
+        return "https://openweathermap.org/img/wn/03d@2x.png"
+    day_map = {100: "01d", 101: "02d", 102: "03d", 103: "04d", 104: "04d"}
+    night_map = {150: "01n", 151: "02n", 152: "03n", 153: "04n", 154: "04n"}
+    if code in day_map:
+        owm = day_map[code]
+    elif code in night_map:
+        owm = night_map[code]
+    elif 300 <= code <= 301:
+        owm = "09d"
+    elif 302 <= code <= 304:
+        owm = "11d"
+    elif 305 <= code <= 399:
+        owm = "10d"
+    elif 400 <= code <= 499:
+        owm = "13d"
+    elif 500 <= code <= 515:
+        owm = "50d"
+    else:
+        owm = "03d"
+    return f"https://openweathermap.org/img/wn/{owm}@2x.png"
+
+
+def ensure_card_assets() -> None:
+    root = Path(__file__).resolve().parent
+    src_dir = root / "assets" / "card"
+    dst_dir = root / "public" / "assets" / "card"
+    if not src_dir.is_dir():
+        return
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for png in sorted(src_dir.glob("*.png")):
+        dest = dst_dir / png.name
+        if not dest.exists():
+            shutil.copy2(png, dest)
+
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -555,7 +627,8 @@ def build_template_context(
     header_time = now_dt.strftime("%H:%M")
 
     icon_code = select_card_icon(hourly)
-    card_image_url = f"https://cdn.jsdelivr.net/npm/qweather-icons@1.8.0/icons/{icon_code}.svg"
+    card_image_url = card_cover_png_url(icon_code, pages_base_url)
+    source_icon_url = source_icon_png_url(icon_code)
     jump_url = pages_base_url or ""
 
     hourly_desc_raw = build_hourly_vertical(hourly)
@@ -649,6 +722,7 @@ def build_template_context(
         "astronomy": build_astronomy_context(astronomy or {}),
         "icon_code": icon_code,
         "card_image_url": card_image_url,
+        "source_icon_url": source_icon_url,
         "main_title": truncate_text(f"🌤️ {CITY_NAME}", 26),
         "main_desc": truncate_text(f"{header_date} 周{weekday_cn} {header_time}", 30),
         "hourly_desc": truncate_text(hourly_desc_raw, 112),
@@ -711,6 +785,7 @@ def main() -> None:
         with open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(html)
         print(f"Detail page written to {output_dir}/index.html")
+        ensure_card_assets()
     except Exception as exc:
         print(f"⚠️  详情页生成失败（{exc}），跳过；继续推送卡片")
     card = render_card(context)

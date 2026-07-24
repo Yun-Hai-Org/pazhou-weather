@@ -1,7 +1,7 @@
 {
   "card_type": "news_notice",
   "source": {
-    "icon_url": {{ card_image_url | tojson }},
+    "icon_url": {{ source_icon_url | tojson }},
     "desc": {{ "和风天气" | tojson }},
     "desc_color": 0
   },
@@ -10,7 +10,8 @@
     "desc": {{ main_desc | tojson }}
   },
   "card_image": {
-    "url": {{ card_image_url | tojson }}
+    "url": {{ card_image_url | tojson }},
+    "aspect_ratio": 2.2
   },
   "vertical_content_list": [
     {
