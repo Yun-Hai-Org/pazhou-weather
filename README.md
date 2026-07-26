@@ -38,9 +38,16 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 
 ### 2. 企业微信群机器人
 
+通过 `APP_ENV` 区分本地开发与生产推送目标：
+
+| 环境 | `APP_ENV` | Webhook 变量 | 说明 |
+| ---- | --------- | ------------ | ---- |
+| 本地开发 | `dev`（默认） | `WECOM_WEBHOOK_URL_DEV` | 单个测试群 |
+| 生产（GitHub Actions） | `prod` | `WECOM_WEBHOOK_URL_PROD` | 多个正式群，英文逗号分隔 |
+
 1. 在企业微信群中添加「自定义机器人」
 2. 复制完整的 Webhook URL
-3. 如需同时推送到多个群/多个机器人，将多个 Webhook URL 用英文逗号（,）拼接在同一个 WECOM_WEBHOOK_URL 中即可
+3. 本地填 `WECOM_WEBHOOK_URL_DEV`；生产在 GitHub Secret `WECOM_WEBHOOK_URL_PROD` 中配置多个 URL（英文逗号分隔）
 
 ### 3. Cloudflare Pages
 
@@ -50,7 +57,7 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 | ---- | ---- | ---- |
 | Secret | QWEATHER_API_KEY | 和风天气 API Key |
 | Secret | QWEATHER_API_HOST | 和风天气 API Host |
-| Secret | WECOM_WEBHOOK_URL | 企业微信群机器人 Webhook（多个用英文逗号分隔） |
+| Secret | WECOM_WEBHOOK_URL_PROD | 生产环境企业微信 Webhook（多个用英文逗号分隔） |
 | Secret | CLOUDFLARE_API_TOKEN | Cloudflare API Token（Pages 部署权限） |
 | Secret | CLOUDFLARE_ACCOUNT_ID | Cloudflare Account ID |
 | Variable | CF_PAGES_URL | Cloudflare Pages 站点 URL（卡片跳转地址） |
@@ -80,17 +87,18 @@ bunx wrangler secret put GH_REPO
 
 ```bash
 uv sync
-export QWEATHER_API_KEY="你的API_KEY"
-export QWEATHER_API_HOST="你的API_HOST"
-export WECOM_WEBHOOK_URL="你的企业微信Webhook"
-export PAGES_BASE_URL="https://你的.pages.dev/"
+# 复制 .env.example 为 .env 后编辑：APP_ENV=dev，填写 QWEATHER_*、WECOM_WEBHOOK_URL_DEV、PAGES_BASE_URL
 
 ./run.sh
 ```
 
+`run.sh` 会通过 `uv run --env-file .env` 自动加载配置，默认 `APP_ENV=dev`，消息仅发到测试群。
+
 ## GitHub Actions
 
 workflow 由 Cloudflare Worker 定时 `repository_dispatch` 或手动 `workflow_dispatch` 触发，将 `public/` 部署到 Cloudflare Pages。
+
+**Secret 迁移（一次性）：** 将原 `WECOM_WEBHOOK_URL` 的值迁移到 `WECOM_WEBHOOK_URL_PROD`，然后删除旧 Secret。workflow 已设置 `APP_ENV=prod`，推送走生产多群配置。
 
 ## 定时说明
 
