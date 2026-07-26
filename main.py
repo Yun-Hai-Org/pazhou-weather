@@ -42,10 +42,10 @@ def require_env(name: str) -> str:
 
 
 def parse_webhook_urls(raw: str) -> list[str]:
-    """解析 WECOM_WEBHOOK_URL，支持配置多个企业微信 Webhook。
+    """解析企业微信 Webhook 配置，支持多个地址。
 
     多个地址之间用英文逗号、英文分号或换行分隔，例如：
-        WECOM_WEBHOOK_URL="https://qyapi.../key=aaa,https://qyapi.../key=bbb"
+        WECOM_WEBHOOK_URL_PROD="https://qyapi.../key=aaa,https://qyapi.../key=bbb"
     自动去除空白项与重复项，保持原有顺序。
     """
     urls = [u.strip() for u in re.split(r"[,;\n]+", raw) if u.strip()]
@@ -56,6 +56,26 @@ def parse_webhook_urls(raw: str) -> list[str]:
             seen.add(url)
             unique_urls.append(url)
     return unique_urls
+
+
+def resolve_app_env() -> str:
+    env = os.environ.get("APP_ENV", "dev").strip().lower()
+    if env not in ("dev", "prod"):
+        print(f"Invalid APP_ENV: {env!r} (expected dev or prod)", file=sys.stderr)
+        sys.exit(1)
+    return env
+
+
+def resolve_webhook_urls() -> list[str]:
+    app_env = resolve_app_env()
+    key = "WECOM_WEBHOOK_URL_PROD" if app_env == "prod" else "WECOM_WEBHOOK_URL_DEV"
+    raw = require_env(key)
+    urls = parse_webhook_urls(raw)
+    if not urls:
+        print(f"Missing or empty: {key}", file=sys.stderr)
+        sys.exit(1)
+    print(f"APP_ENV={app_env}: sending to {len(urls)} webhook(s) via {key}")
+    return urls
 
 
 def http_get_json(url: str, headers: dict[str, str] | None = None) -> dict:
@@ -306,7 +326,7 @@ def build_umbrella_advice(hourly: list[dict]) -> str:
     next_6h = hourly[:6]
     for item in next_6h:
         if is_rainy_text(item.get("text", "")) or pop_value(item.get("pop")) >= UMBRELLA_POP_THRESHOLD:
-            return "☂️ **建议带伞**（未来 6 小时降水概率偏高或有雨雪）"
+            return "☂️ **建议带伞**"
     return "😎 **无需带伞**"
 
 
@@ -770,26 +790,27 @@ def build_template_context(
                 "level": format_warning_level(w),
             }
         )
+    warnings_list.sort(key=lambda x: x.get("event") == "其他预警")
 
     indexed = index_by_type(indices)
     life_keys = [
-        ("带伞", ""),
-        ("空调", "11"),
-        ("衣着", "3"),
-        ("紫外线", "5"),
-        ("感冒", "9"),
-        ("运动", "1"),
-        ("旅游", "6"),
-        ("舒适度", "8"),
-        ("晾晒", "14"),
-        ("防晒", "16"),
-        ("交通", "15"),
-        ("空气扩散", "10"),
+        ("☂️ 带伞", ""),
+        ("❄️ 空调", "11"),
+        ("👔 衣着", "3"),
+        ("☀️ 紫外线", "5"),
+        ("🤧 感冒", "9"),
+        ("🏃 运动", "1"),
+        ("✈️ 旅游", "6"),
+        ("😌 舒适度", "8"),
+        ("👕 晾晒", "14"),
+        ("🧴 防晒", "16"),
+        ("🚗 交通", "15"),
+        ("💨 空气扩散", "10"),
     ]
     umbrella = build_umbrella_advice(hourly).replace("**", "")
     life_indices: list[dict[str, str]] = []
     for name, key in life_keys:
-        if name == "带伞":
+        if name == "☂️ 带伞":
             val = umbrella
         else:
             item = indexed.get(key)
@@ -867,10 +888,7 @@ def send_wecom_template_card_all(webhook_urls, template_card):
 def main() -> None:
     api_key = require_env("QWEATHER_API_KEY")
     api_host = require_env("QWEATHER_API_HOST")
-    webhook_urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL"))
-    if not webhook_urls:
-        print("Missing environment variable: WECOM_WEBHOOK_URL", file=sys.stderr)
-        sys.exit(1)
+    webhook_urls = resolve_webhook_urls()
 
     now, hourly, warnings, indices = fetch_weather(api_host, api_key)
     air_quality = fetch_air_quality(api_host, api_key)
