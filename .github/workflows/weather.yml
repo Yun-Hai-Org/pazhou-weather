@@ -28,16 +28,6 @@ jobs:
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
           PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
         run: uv run python main.py
-      - name: Debug CF Pages config
-        if: always()
-        env:
-          CF_P: ${{ vars.CF_PAGES_PROJECT }}
-          CF_A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CF_T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          curl -sS -X GET "https://api.cloudflare.com/client/v4/accounts" -H "Authorization: Bearer ${CF_T}" -H "Content-Type: application/json" | python3 -c "import sys,json;d=json.load(sys.stdin);[print('account:',a.get('name'),a.get('id')) for a in d.get('result') or []]"
-          curl -sS -X GET "https://api.cloudflare.com/client/v4/accounts/${CF_A}" -H "Authorization: Bearer ${CF_T}" -H "Content-Type: application/json" | python3 -c "import sys,json;d=json.load(sys.stdin);r=d.get('result') or {};print('acct:',r.get('name'));print('ok:',d.get('success'));print('err:',d.get('errors'))"
-          curl -sS -X GET "https://api.cloudflare.com/client/v4/accounts/${CF_A}/pages/projects" -H "Authorization: Bearer ${CF_T}" -H "Content-Type: application/json" | python3 -c "import sys,json;d=json.load(sys.stdin);print('ok:',d.get('success'));print('err:',d.get('errors'));[print('proj:',p.get('name')) for p in d.get('result') or []]"
       - name: Deploy to Cloudflare Pages
         if: always()
         uses: cloudflare/pages-action@v1
