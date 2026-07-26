@@ -28,13 +28,14 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
 .sec-empty{color:var(--muted);padding:6px 0;font-size:14px}
 .qi{font-style:normal}
 
-.now{color:#fff;padding:24px 20px;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.12);text-align:center}
+.now{color:#fff;padding:28px 20px 24px;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.15);text-align:center;background-size:cover;background-position:center;min-height:240px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}
 .now .loc{font-size:14px;opacity:.92;display:flex;align-items:center;justify-content:center;gap:4px}
 .now .icon{font-size:72px;margin:6px 0;line-height:1}
 .now .temp{font-size:56px;font-weight:700;line-height:1.1}
 .now .text{font-size:18px;opacity:.95;margin-top:2px}
 .now .meta{font-size:13px;opacity:.88;margin-top:14px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
 .now .meta span{white-space:nowrap}
+.now .loc,.now .icon,.now .temp,.now .text,.now .meta{text-shadow:0 2px 12px rgba(0,0,0,.5)}
 
 .scroll{display:flex;overflow-x:auto;gap:8px;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .scroll::-webkit-scrollbar{display:none}
@@ -81,15 +82,7 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
 </style>
 </head>
 <body>
-{% set ns = namespace(grad='linear-gradient(135deg,#5ba3e0,#3b82f6)') %}
-{% set ic = now.icon|int %}
-{% if ic in [302,303,304] %}{% set ns.grad = 'linear-gradient(135deg,#6d5bb8,#3f3a7a)' %}
-{% elif 300 <= ic <= 399 %}{% set ns.grad = 'linear-gradient(135deg,#5b7a9c,#3a5677)' %}
-{% elif 400 <= ic <= 499 %}{% set ns.grad = 'linear-gradient(135deg,#8499b5,#5d7290)' %}
-{% elif ic >= 500 %}{% set ns.grad = 'linear-gradient(135deg,#9aa6b4,#6b7785)' %}
-{% elif ic in [101,102,103,104,151,152,153,154] %}{% set ns.grad = 'linear-gradient(135deg,#7fa0c0,#5a7a9a)' %}
-{% endif %}
-<div class="now" style="background:{{ ns.grad }}">
+<div class="now" style="background-image:linear-gradient(rgba(15,23,42,.2),rgba(15,23,42,.65)),url('{{ card_image_url }}')">
   <div class="loc">📍 {{ city_name }}</div>
   <div class="icon"><i class="qi qi-{{ now.icon }}"></i></div>
   <div class="temp">{{ now.temp }}°</div>
