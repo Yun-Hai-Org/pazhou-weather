@@ -554,8 +554,7 @@ def select_card_icon(hourly):
     return first_by_rank[best_rank]
 
 CARD_IMAGE_CDN_BASE_DEFAULT = (
-    "https://cdn.jsdelivr.net/gh/Yun-Hai-Org/pazhou-weather"
-    "@feat/wecom-template-card-detail-page/assets/card"
+    "https://pazhou-weather.pages.dev/assets/card"
 )
 
 _COVER_PLACEHOLDER_COLORS: dict[str, tuple[str, str, str]] = {
