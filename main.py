@@ -145,13 +145,13 @@ def fetch_weather(host: str, api_key: str) -> tuple[dict[str, Any], list[dict[st
     return now, hourly, warnings, indices
 
 
-def fetch_3d_forecast(host: str, api_key: str) -> list[dict[str, Any]]:
-    # 3 天预报接口（免费，含未来 3 天逐日最高/最低温、白天/夜间天气、降水量等）。
+def fetch_7d_forecast(host: str, api_key: str) -> list[dict[str, Any]]:
+    # 7 天预报接口（免费订阅支持，含未来 7 天逐日最高/最低温、白天/夜间天气、降水量等）。
     # 任一异常均优雅降级：返回空列表，不阻断整体推送。
     try:
-        return qweather_get(host, api_key, "/v7/weather/3d").get("daily", [])
+        return qweather_get(host, api_key, "/v7/weather/7d").get("daily", [])
     except Exception as exc:  # noqa: BLE001 - 网络/接口异常统一降级
-        print(f"⚠️  3 天预报接口请求失败（{exc}），跳过")
+        print(f"⚠️  7 天预报接口请求失败（{exc}），跳过")
         return []
 
 
@@ -445,7 +445,7 @@ def weather_emoji(text):
 
 def build_hourly_vertical(hourly, max_len=112, include_pop: bool = True):
     lines = []
-    for item in hourly[:6]:
+    for item in hourly[:3]:
         fx_time = item.get("fxTime", "")
         if not fx_time:
             continue
@@ -526,13 +526,10 @@ def build_card_vertical_items(
     if hourly_desc:
         items.append(
             {
-                "title": "⏭️ 未来6小时",
+                "title": "⏭️ 未来3小时",
                 "desc": hourly_desc,
             }
         )
-    astro_desc = build_card_astro_desc(astro)
-    if astro_desc:
-        items.append({"title": "🌓 日出日落", "desc": astro_desc})
     return items
 
 
@@ -716,7 +713,7 @@ def build_template_context(
     indices: list[dict[str, Any]],
     air_quality: dict[str, Any] | None,
     astronomy: dict[str, Any] | None,
-    forecast_3d: list[dict[str, Any]] | None,
+    forecast_7d: list[dict[str, Any]] | None,
     pages_base_url: str,
 ) -> dict[str, Any]:
     now_dt = datetime.now(TZ)
@@ -753,7 +750,7 @@ def build_template_context(
         )
 
     forecast_list: list[dict[str, Any]] = []
-    for index, item in enumerate(forecast_3d or []):
+    for index, item in enumerate(forecast_7d or []):
         fx_date = item.get("fxDate", "")
         forecast_list.append(
             {
@@ -819,7 +816,7 @@ def build_template_context(
             "wind_scale": now.get("windScale", ""),
         },
         "hourly": hourly_24,
-        "forecast_3d": forecast_list,
+        "forecast_7d": forecast_list,
         "warnings": warnings_list,
         "life_indices": life_indices,
         "air_quality": build_air_quality_context(air_quality),
@@ -879,10 +876,10 @@ def main() -> None:
     now, hourly, warnings, indices = fetch_weather(api_host, api_key)
     air_quality = fetch_air_quality(api_host, api_key)
     astronomy = fetch_astronomy(api_host, api_key)
-    forecast_3d = fetch_3d_forecast(api_host, api_key)
+    forecast_7d = fetch_7d_forecast(api_host, api_key)
     ensure_card_assets()
     pages_base_url = os.environ.get("PAGES_BASE_URL", "").strip()
-    context = build_template_context(now, hourly, warnings, indices, air_quality, astronomy, forecast_3d, pages_base_url)
+    context = build_template_context(now, hourly, warnings, indices, air_quality, astronomy, forecast_7d, pages_base_url)
     try:
         html = render_detail_html(context)
         output_dir = "public"
