@@ -19,14 +19,14 @@ jobs:
           enable-cache: true
       - name: Install dependencies
         run: uv sync
-      # PAGES_BASE_URL / deploy use org vars CF_PAGES_URL and CF_PAGES_PROJECT (and CF secrets).
       - name: Build detail page and assets (no send)
         env:
           WECOM_SKIP_SEND: "1"
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
-          APP_ENV: prod
+          APP_ENV: ${{ vars.APP_ENV || 'prod' }}
           WECOM_WEBHOOK_URL_PROD: ${{ secrets.WECOM_WEBHOOK_URL_PROD }}
+          WECOM_WEBHOOK_URL_DEV: ${{ secrets.WECOM_WEBHOOK_URL_DEV }}
           PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
         run: uv run python main.py
       - name: Deploy to Cloudflare Pages
@@ -42,8 +42,9 @@ jobs:
         env:
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
-          APP_ENV: prod
+          APP_ENV: ${{ vars.APP_ENV || 'prod' }}
           WECOM_WEBHOOK_URL_PROD: ${{ secrets.WECOM_WEBHOOK_URL_PROD }}
+          WECOM_WEBHOOK_URL_DEV: ${{ secrets.WECOM_WEBHOOK_URL_DEV }}
           PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
           CARD_IMAGE_CDN_BASE: ${{ vars.CF_PAGES_URL }}/assets/card
         run: uv run python main.py
