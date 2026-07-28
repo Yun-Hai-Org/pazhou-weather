@@ -58,23 +58,35 @@ def parse_webhook_urls(raw: str) -> list[str]:
     return unique_urls
 
 
-def resolve_app_env() -> str:
-    env = os.environ.get("APP_ENV", "dev").strip().lower()
-    if env not in ("dev", "prod"):
-        print(f"Invalid APP_ENV: {env!r} (expected dev or prod)", file=sys.stderr)
-        sys.exit(1)
-    return env
-
-
 def resolve_webhook_urls() -> list[str]:
-    app_env = resolve_app_env()
-    key = "WECOM_WEBHOOK_URL_PROD" if app_env == "prod" else "WECOM_WEBHOOK_URL_DEV"
-    raw = require_env(key)
-    urls = parse_webhook_urls(raw)
+    """解析企业微信 Webhook 地址。
+
+    - DEV（WECOM_WEBHOOK_URL_DEV）：始终发送
+    - PROD（WECOM_WEBHOOK_URL_PROD）：仅工作日（周一至周五）发送
+      当 WECOM_SKIP_PROD_WEEKENDS=1 时，周末（周六/周日）跳过 PROD
+    """
+    dev_raw = os.environ.get("WECOM_WEBHOOK_URL_DEV", "").strip()
+    prod_raw = os.environ.get("WECOM_WEBHOOK_URL_PROD", "").strip()
+
+    dev_urls = parse_webhook_urls(dev_raw) if dev_raw else []
+    prod_urls = parse_webhook_urls(prod_raw) if prod_raw else []
+
+    skip_weekends = os.environ.get("WECOM_SKIP_PROD_WEEKENDS", "").strip() == "1"
+    is_weekend = datetime.now(TZ).weekday() in (5, 6)
+    if skip_weekends and is_weekend:
+        prod_urls = []
+
+    urls = dev_urls + prod_urls
     if not urls:
-        print(f"Missing or empty: {key}", file=sys.stderr)
+        print("No webhook URLs configured (WECOM_WEBHOOK_URL_DEV / WECOM_WEBHOOK_URL_PROD)", file=sys.stderr)
         sys.exit(1)
-    print(f"APP_ENV={app_env}: sending to {len(urls)} webhook(s) via {key}")
+
+    parts = [f"DEV:{len(dev_urls)}"]
+    if prod_urls:
+        parts.append(f"PROD:{len(prod_urls)}")
+    elif skip_weekends and is_weekend:
+        parts.append("PROD:0(weekend skipped)")
+    print(f"Sending to {" + ".join(parts)} webhook(s)")
     return urls
 
 
