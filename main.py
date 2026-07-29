@@ -1,4 +1,3 @@
-import base64
 import gzip
 import html
 import json
@@ -667,49 +666,28 @@ def build_image_prompt(now: dict[str, Any], astronomy: dict[str, Any]) -> str:
 def generate_weather_image(
     now: dict[str, Any], astronomy: dict[str, Any], out_path: Path
 ) -> bool:
-    """调用 OpenAI 兼容图像生成接口，指数退避重试 10 次，成功写入 out_path 返回 True。"""
-    api_base = os.environ.get("IMAGE_GEN_API_BASE", "").strip()
-    api_key = os.environ.get("IMAGE_GEN_API_KEY", "").strip()
-    if not api_base or not api_key:
-        return False
-    model = os.environ.get("IMAGE_GEN_MODEL", "dall-e-3").strip()
+    """调用 Pollinations.ai GET 接口生成图像，指数退避重试 10 次，成功写入 out_path 返回 True。"""
+    api_base = os.environ.get(
+        "IMAGE_GEN_API_BASE", "https://image.pollinations.ai"
+    ).strip()
+    model = os.environ.get("IMAGE_GEN_MODEL", "flux").strip()
     prompt = build_image_prompt(now, astronomy)
-    url = f"{api_base.rstrip('/')}/images/generations"
-    body = json.dumps(
-        {
-            "model": model,
-            "prompt": prompt,
-            "n": 1,
-            "size": "1792x1024",
-            "response_format": "b64_json",
-        }
-    ).encode("utf-8")
+    encoded_prompt = urllib.parse.quote(prompt)
+    url = (
+        f"{api_base.rstrip('/')}/prompt/{encoded_prompt}"
+        f"?width=1792&height=1024&model={urllib.parse.quote(model)}&nologo=true"
+    )
     max_retries = 10
     base_delay = 2
     max_delay = 60
     for attempt in range(1, max_retries + 1):
-        request = urllib.request.Request(
-            url,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-            method="POST",
-        )
         try:
+            request = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(request, timeout=120) as response:
-                resp = json.loads(response.read().decode("utf-8"))
-            data = (resp.get("data") or [{}])[0]
-            b64 = data.get("b64_json")
-            if b64:
-                out_path.write_bytes(base64.b64decode(b64))
-                return True
-            img_url = data.get("url")
-            if not img_url:
-                raise RuntimeError("响应中无 b64_json 也无 url")
-            with urllib.request.urlopen(img_url, timeout=60) as r:
-                out_path.write_bytes(r.read())
+                content_type = response.headers.get("Content-Type", "")
+                if not content_type.startswith("image/"):
+                    raise RuntimeError(f"unexpected content-type: {content_type}")
+                out_path.write_bytes(response.read())
             return True
         except Exception as exc:
             if attempt < max_retries:
