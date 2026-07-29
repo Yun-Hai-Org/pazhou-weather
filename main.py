@@ -58,35 +58,28 @@ def parse_webhook_urls(raw: str) -> list[str]:
     return unique_urls
 
 
-def resolve_webhook_urls() -> list[str]:
-    """解析企业微信 Webhook 地址。
-
-    - DEV（WECOM_WEBHOOK_URL_DEV）：始终发送
-    - PROD（WECOM_WEBHOOK_URL_PROD）：仅工作日（周一至周五）发送
-      当 WECOM_SKIP_PROD_WEEKENDS=1 时，周末（周六/周日）跳过 PROD
-    """
-    dev_raw = os.environ.get("WECOM_WEBHOOK_URL_DEV", "").strip()
-    prod_raw = os.environ.get("WECOM_WEBHOOK_URL_PROD", "").strip()
-
-    dev_urls = parse_webhook_urls(dev_raw) if dev_raw else []
-    prod_urls = parse_webhook_urls(prod_raw) if prod_raw else []
-
-    skip_weekends = os.environ.get("WECOM_SKIP_PROD_WEEKENDS", "").strip() == "1"
-    is_weekend = datetime.now(TZ).weekday() in (5, 6)
-    if skip_weekends and is_weekend:
-        prod_urls = []
-
-    urls = dev_urls + prod_urls
-    if not urls:
-        print("No webhook URLs configured (WECOM_WEBHOOK_URL_DEV / WECOM_WEBHOOK_URL_PROD)", file=sys.stderr)
+def resolve_app_env() -> str:
+    env = os.environ.get("APP_ENV", "dev").strip().lower()
+    if env not in ("dev", "prod"):
+        print(f"Invalid APP_ENV: {env!r} (expected dev or prod)", file=sys.stderr)
         sys.exit(1)
+    return env
 
-    parts = [f"DEV:{len(dev_urls)}"]
-    if prod_urls:
-        parts.append(f"PROD:{len(prod_urls)}")
-    elif skip_weekends and is_weekend:
-        parts.append("PROD:0(weekend skipped)")
-    print(f"Sending to {" + ".join(parts)} webhook(s)")
+
+def resolve_webhook_urls() -> list[str]:
+    """APP_ENV=dev: DEV only. APP_ENV=prod: PROD only, weekdays."""
+    app_env = resolve_app_env()
+    if app_env == "dev":
+        urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL_DEV"))
+        print(f"APP_ENV=dev: sending to {len(urls)} DEV webhook(s)")
+        return urls
+    urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL_PROD"))
+    skip = os.environ.get("WECOM_SKIP_PROD_WEEKENDS", "").strip() == "1"
+    weekend = datetime.now(TZ).weekday() in (5, 6)
+    if skip and weekend:
+        print(f"APP_ENV=prod: weekend, skipping {len(urls)} PROD webhook(s)")
+        return []
+    print(f"APP_ENV=prod: sending to {len(urls)} PROD webhook(s)")
     return urls
 
 
@@ -110,7 +103,7 @@ def http_post_json(url: str, payload: dict) -> dict:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with urllib.request.urlopen(request, timeout=60) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -920,7 +913,11 @@ def main() -> None:
         print(f"⚠️  详情页生成失败（{exc}），跳过；继续推送卡片")
     card = render_card(context)
     if os.environ.get("WECOM_SKIP_SEND", "").strip() != "1":
-        send_wecom_template_card_all(webhook_urls, card)
+        if not webhook_urls:
+            print("No webhooks to send (weekend skip).")
+        else:
+            send_wecom_template_card_all(webhook_urls, card)
+            print(f"sent to {len(webhook_urls)} webhook(s).")
         print(f"Weather report sent successfully to {len(webhook_urls)} webhook(s).")
     else:
         print("WECOM_SKIP_SEND=1: skipped WeCom template card send.")
