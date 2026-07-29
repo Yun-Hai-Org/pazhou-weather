@@ -675,14 +675,16 @@ def generate_weather_image(
     encoded_prompt = urllib.parse.quote(prompt)
     url = (
         f"{api_base.rstrip('/')}/prompt/{encoded_prompt}"
-        f"?width=1792&height=1024&model={urllib.parse.quote(model)}&nologo=true"
+        f"?width=1792&height=1024&model={urllib.parse.quote(model)}"
     )
     max_retries = 10
     base_delay = 2
     max_delay = 60
     for attempt in range(1, max_retries + 1):
         try:
-            request = urllib.request.Request(url, method="GET")
+            request = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0"}, method="GET"
+            )
             with urllib.request.urlopen(request, timeout=120) as response:
                 content_type = response.headers.get("Content-Type", "")
                 if not content_type.startswith("image/"):
