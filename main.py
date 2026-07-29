@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import time
 from typing import Any
 import sys
 import urllib.error
@@ -628,6 +629,79 @@ def card_cover_png_url(icon_code: str) -> str:
     return f"{CARD_IMAGE_CDN_BASE_DEFAULT.rstrip('/')}/{cat}.png"
 
 
+def build_image_prompt(now: dict[str, Any], astronomy: dict[str, Any]) -> str:
+    """根据天气实况构造插画风格 prompt。"""
+    weather_text = now.get("text", "") or "晴"
+    temp = now.get("temp", "") or "25"
+    hour = datetime.now(TZ).hour
+    if 5 <= hour < 8:
+        time_desc = "early morning soft light"
+    elif 8 <= hour < 17:
+        time_desc = "bright daylight"
+    elif 17 <= hour < 19:
+        time_desc = "golden hour warm sunset glow"
+    else:
+        time_desc = "night moonlit atmosphere"
+    if "雷" in weather_text:
+        scene = "thunderstorm with dramatic clouds and lightning"
+    elif any(k in weather_text for k in ("雨", "阵雨")):
+        scene = "gentle rain over wet streets"
+    elif "雪" in weather_text:
+        scene = "falling snow covering rooftops"
+    elif any(k in weather_text for k in ("雾", "霾")):
+        scene = "misty fog blanketing the city"
+    elif any(k in weather_text for k in ("云", "阴")):
+        scene = "cloudy overcast sky"
+    else:
+        scene = "clear blue sky with fluffy white clouds"
+    return (
+        f"Flat illustration style, {scene}, "
+        f"Guangzhou Pazhou modern cityscape with Canton Tower silhouette, "
+        f"{time_desc}, temperature around {temp} degrees Celsius, "
+        f"soft pastel colors, clean minimal composition, "
+        f"no text, no words, no letters, no watermark, high quality digital art"
+    )
+
+
+def generate_weather_image(
+    now: dict[str, Any], astronomy: dict[str, Any], out_path: Path
+) -> bool:
+    """调用 Pollinations.ai GET 接口生成图像，指数退避重试 10 次，成功写入 out_path 返回 True。"""
+    api_base = os.environ.get(
+        "IMAGE_GEN_API_BASE", "https://image.pollinations.ai"
+    ).strip() or "https://image.pollinations.ai"
+    model = os.environ.get("IMAGE_GEN_MODEL", "flux").strip()
+    prompt = build_image_prompt(now, astronomy)
+    encoded_prompt = urllib.parse.quote(prompt)
+    url = (
+        f"{api_base.rstrip('/')}/prompt/{encoded_prompt}"
+        f"?width=1792&height=1024&model={urllib.parse.quote(model)}"
+    )
+    max_retries = 10
+    base_delay = 2
+    max_delay = 60
+    for attempt in range(1, max_retries + 1):
+        try:
+            request = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0"}, method="GET"
+            )
+            with urllib.request.urlopen(request, timeout=120) as response:
+                content_type = response.headers.get("Content-Type", "")
+                if not content_type.startswith("image/"):
+                    raise RuntimeError(f"unexpected content-type: {content_type}")
+                out_path.write_bytes(response.read())
+            return True
+        except Exception as exc:
+            if attempt < max_retries:
+                delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                print(f"⚠️  图像生成第 {attempt}/{max_retries} 次失败（{exc}），{delay}s 后重试...")
+                time.sleep(delay)
+            else:
+                print(f"⚠️  图像生成 {max_retries} 次均失败（{exc}），回退到静态配图")
+    return False
+
+
+
 def source_icon_png_url(icon_code: str) -> str:
     try:
         code = int(icon_code)
@@ -739,6 +813,7 @@ def build_template_context(
     astronomy: dict[str, Any] | None,
     forecast_7d: list[dict[str, Any]] | None,
     pages_base_url: str,
+    generated_image_url: str = "",
 ) -> dict[str, Any]:
     now_dt = datetime.now(TZ)
     header_date = now_dt.strftime("%Y-%m-%d")
@@ -746,7 +821,7 @@ def build_template_context(
     header_time = now_dt.strftime("%H:%M")
 
     icon_code = now.get("icon", "100")
-    card_image_url = card_cover_png_url(icon_code)
+    card_image_url = generated_image_url or card_cover_png_url(icon_code)
     source_icon_url = source_icon_png_url(icon_code)
     jump_url = pages_base_url or ""
 
@@ -901,7 +976,16 @@ def main() -> None:
     forecast_7d = fetch_7d_forecast(api_host, api_key)
     ensure_card_assets()
     pages_base_url = os.environ.get("PAGES_BASE_URL", "").strip()
-    context = build_template_context(now, hourly, warnings, indices, air_quality, astronomy, forecast_7d, pages_base_url)
+    generated_image_url = ""
+    if pages_base_url:
+        gen_dir = Path("public/assets/generated")
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        date_tag = datetime.now(TZ).strftime("%Y%m%d")
+        gen_path = gen_dir / f"cover-{date_tag}.png"
+        if generate_weather_image(now, astronomy or {}, gen_path):
+            generated_image_url = f"{pages_base_url.rstrip('/')}/assets/generated/cover-{date_tag}.png"
+            print(f"🖼️  动态配图已生成：{generated_image_url}")
+    context = build_template_context(now, hourly, warnings, indices, air_quality, astronomy, forecast_7d, pages_base_url, generated_image_url)
     try:
         html = render_detail_html(context)
         output_dir = "public"
