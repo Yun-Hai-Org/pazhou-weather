@@ -669,7 +669,7 @@ def generate_weather_image(
     """调用 Pollinations.ai GET 接口生成图像，指数退避重试 10 次，成功写入 out_path 返回 True。"""
     api_base = os.environ.get(
         "IMAGE_GEN_API_BASE", "https://image.pollinations.ai"
-    ).strip()
+    ).strip() or "https://image.pollinations.ai"
     model = os.environ.get("IMAGE_GEN_MODEL", "flux").strip()
     prompt = build_image_prompt(now, astronomy)
     encoded_prompt = urllib.parse.quote(prompt)
