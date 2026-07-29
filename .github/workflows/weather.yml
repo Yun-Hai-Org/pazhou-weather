@@ -24,6 +24,7 @@ jobs:
           WECOM_SKIP_SEND: "1"
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
+          APP_ENV: ${{ vars.APP_ENV || 'dev' }}
           WECOM_SKIP_PROD_WEEKENDS: ${{ github.event_name == 'repository_dispatch' && '1' || '0' }}
           WECOM_WEBHOOK_URL_PROD: ${{ secrets.WECOM_WEBHOOK_URL_PROD }}
           WECOM_WEBHOOK_URL_DEV: ${{ secrets.WECOM_WEBHOOK_URL_DEV }}
@@ -42,6 +43,7 @@ jobs:
         env:
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
+          APP_ENV: ${{ vars.APP_ENV || 'dev' }}
           WECOM_SKIP_PROD_WEEKENDS: ${{ github.event_name == 'repository_dispatch' && '1' || '0' }}
           WECOM_WEBHOOK_URL_PROD: ${{ secrets.WECOM_WEBHOOK_URL_PROD }}
           WECOM_WEBHOOK_URL_DEV: ${{ secrets.WECOM_WEBHOOK_URL_DEV }}
