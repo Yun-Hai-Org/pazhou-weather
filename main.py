@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import time
 from typing import Any
 import sys
 import urllib.error
@@ -666,7 +667,7 @@ def build_image_prompt(now: dict[str, Any], astronomy: dict[str, Any]) -> str:
 def generate_weather_image(
     now: dict[str, Any], astronomy: dict[str, Any], out_path: Path
 ) -> bool:
-    """调用 OpenAI 兼容图像生成接口，成功写入 out_path 返回 True。"""
+    """调用 OpenAI 兼容图像生成接口，指数退避重试 10 次，成功写入 out_path 返回 True。"""
     api_base = os.environ.get("IMAGE_GEN_API_BASE", "").strip()
     api_key = os.environ.get("IMAGE_GEN_API_KEY", "").strip()
     if not api_base or not api_key:
@@ -683,37 +684,41 @@ def generate_weather_image(
             "response_format": "b64_json",
         }
     ).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            resp = json.loads(response.read().decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001
-        print(f"⚠️  图像生成接口请求失败（{exc}），回退到静态配图")
-        return False
-    data = (resp.get("data") or [{}])[0]
-    b64 = data.get("b64_json")
-    if b64:
-        out_path.write_bytes(base64.b64decode(b64))
-        return True
-    img_url = data.get("url")
-    if not img_url:
-        print("⚠️  图像生成接口返回异常，回退到静态配图")
-        return False
-    try:
-        with urllib.request.urlopen(img_url, timeout=60) as r:
-            out_path.write_bytes(r.read())
-        return True
-    except Exception as exc:  # noqa: BLE001
-        print(f"⚠️  图像下载失败（{exc}），回退到静态配图")
-        return False
+    max_retries = 10
+    base_delay = 2
+    max_delay = 60
+    for attempt in range(1, max_retries + 1):
+        request = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                resp = json.loads(response.read().decode("utf-8"))
+            data = (resp.get("data") or [{}])[0]
+            b64 = data.get("b64_json")
+            if b64:
+                out_path.write_bytes(base64.b64decode(b64))
+                return True
+            img_url = data.get("url")
+            if not img_url:
+                raise RuntimeError("响应中无 b64_json 也无 url")
+            with urllib.request.urlopen(img_url, timeout=60) as r:
+                out_path.write_bytes(r.read())
+            return True
+        except Exception as exc:
+            if attempt < max_retries:
+                delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                print(f"⚠️  图像生成第 {attempt}/{max_retries} 次失败（{exc}），{delay}s 后重试...")
+                time.sleep(delay)
+            else:
+                print(f"⚠️  图像生成 {max_retries} 次均失败（{exc}），回退到静态配图")
+    return False
 
 
 
