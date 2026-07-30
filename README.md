@@ -2,7 +2,7 @@
 
 仓库：[Yun-Hai-Org/pazhou-weather](https://github.com/Yun-Hai-Org/pazhou-weather)
 
-每天北京时间 **05:50**、**16:50** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
+每天北京时间 **06:05**、**17:05** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
 
 - 卡片配图（和风官方图标，按未来 6 小时主导天气自动选择）
 - 小时预报 + 日出日落摘要
@@ -10,7 +10,7 @@
 
 ## 架构
 
-- **定时**：Cloudflare Worker Cron（UTC `50 21 * * *` / `50 8 * * *`，对应北京 05:50 / 16:50）通过 `repository_dispatch` 触发 GitHub Actions（`event_type: weather-report`）
+- **定时**：Cloudflare Worker Cron（UTC `5 22 * * *` / `5 9 * * *`，对应北京 06:05 / 17:05）通过 `repository_dispatch` 触发 GitHub Actions（`event_type: weather-report`）
 - **构建**：GHA 拉取和风天气 → Jinja2 渲染企业微信卡片 JSON 与详情页 HTML → 推送企业微信 → 部署到 Cloudflare Pages
 - **模板**：`templates/detail.html.j2`（详情页）、`templates/card.json.j2`（企业微信卡片）
 
@@ -65,7 +65,7 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 
 ### 4. Cloudflare Worker 定时触发
 
-Worker 位于 `workers/weather-cron/`，在北京时间 05:50 / 16:50 向 GitHub 发送 `repository_dispatch`。
+Worker 位于 `workers/weather-cron/`，在北京时间 06:05 / 17:05 向 GitHub 发送 `repository_dispatch`。
 
 部署前设置 secrets（`wrangler secret put`）：
 
@@ -104,8 +104,8 @@ workflow 由 Cloudflare Worker 定时 `repository_dispatch` 或手动 `workflow_
 
 | 北京时间 | UTC cron | 触发方式 |
 | -------- | -------- | -------- |
-| 05:50 | 50 21 * * * | CF Worker → GHA |
-| 16:50 | 50 8 * * * | CF Worker → GHA |
+| 06:05 | 5 22 * * * | CF Worker → GHA |
+| 17:05 | 5 9 * * * | CF Worker → GHA |
 
 ## 费用
 
