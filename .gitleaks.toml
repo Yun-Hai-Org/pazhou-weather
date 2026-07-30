@@ -1,0 +1,7 @@
+title = "pazhou-weather gitleaks config"
+
+[allowlist]
+description = "BMAD files-manifest stores SHA256 checksums, not secrets"
+paths = [
+  '''_bmad/_config/files-manifest\.csv''',
+]
