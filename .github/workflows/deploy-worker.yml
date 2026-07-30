@@ -2,6 +2,12 @@ name: Deploy Weather Cron Worker
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/cron-schedule-update
+    paths:
+      - workers/weather-cron/**
+      - .github/workflows/deploy-worker.yml
 
 jobs:
   deploy:
