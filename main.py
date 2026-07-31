@@ -2,6 +2,7 @@ import gzip
 import html
 import json
 import os
+import random
 import re
 import shutil
 import time
@@ -673,9 +674,10 @@ def generate_weather_image(
     model = os.environ.get("IMAGE_GEN_MODEL", "flux").strip()
     prompt = build_image_prompt(now, astronomy)
     encoded_prompt = urllib.parse.quote(prompt)
+    seed = random.randint(0, 999999)
     url = (
         f"{api_base.rstrip('/')}/prompt/{encoded_prompt}"
-        f"?width=1792&height=1024&model={urllib.parse.quote(model)}"
+        f"?width=1792&height=1024&model={urllib.parse.quote(model)}&seed={seed}"
     )
     max_retries = 10
     base_delay = 2
@@ -983,7 +985,8 @@ def main() -> None:
         date_tag = datetime.now(TZ).strftime("%Y%m%d")
         gen_path = gen_dir / f"cover-{date_tag}.png"
         if generate_weather_image(now, astronomy or {}, gen_path):
-            generated_image_url = f"{pages_base_url.rstrip('/')}/assets/generated/cover-{date_tag}.png"
+            time_tag = datetime.now(TZ).strftime("%Y%m%d%H%M%S")
+            generated_image_url = f"{pages_base_url.rstrip('/')}/assets/generated/cover-{date_tag}.png?v={time_tag}"
             print(f"🖼️  动态配图已生成：{generated_image_url}")
     context = build_template_context(now, hourly, warnings, indices, air_quality, astronomy, forecast_7d, pages_base_url, generated_image_url)
     try:
