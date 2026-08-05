@@ -388,14 +388,20 @@ _POLLUTANT_LABEL = {
 }
 
 
+def primary_pollutant_label(primary: Any) -> str:
+    # 和风 airquality/v1：primaryPollutant 为 {code,name,fullName}；缺省为 null。
+    if not isinstance(primary, dict):
+        return ""
+    code = str(primary.get("code") or "")
+    return _POLLUTANT_LABEL.get(code) or primary.get("name") or primary.get("fullName") or ""
+
+
 def build_air_quality_lines(aq: dict[str, Any] | None) -> str:
     if not aq:
         return "🌫️ 暂无空气质量数据"
     aqi = aq.get("aqi", "-")
     category = aq.get("category", "")
-    # 新版接口字段为 primaryPollutant（污染物代码，如 "pm2p5"），无主要污染物时为 None。
-    primary = aq.get("primaryPollutant") or ""
-    primary_label = _POLLUTANT_LABEL.get(primary, primary.upper()) if primary else ""
+    primary_label = primary_pollutant_label(aq.get("primaryPollutant"))
     primary_text = f"　主要污染物 `{primary_label}`" if primary_label else ""
     icon = _AQI_ICON.get(category, "🌫️")
     line = f"{icon} **AQI {aqi}　{category}**{primary_text}"
@@ -768,8 +774,7 @@ def build_air_quality_context(aq: dict[str, Any] | None) -> dict[str, Any] | Non
     if not aq:
         return None
     category = aq.get("category", "")
-    primary = aq.get("primaryPollutant") or ""
-    primary_label = _POLLUTANT_LABEL.get(primary, primary.upper()) if primary else ""
+    primary_label = primary_pollutant_label(aq.get("primaryPollutant"))
     health: dict[str, Any] = aq.get("health") or {}
     advice_text = health.get("effect") or ""
     if not advice_text:
