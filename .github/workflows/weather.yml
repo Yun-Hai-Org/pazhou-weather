@@ -1,6 +1,9 @@
 name: Weather Report
 
 on:
+  schedule:
+    - cron: "55 21 * * *"  # 北京 05:55
+    - cron: "55 8 * * *"   # 北京 16:55
   repository_dispatch:
     types: [weather-report]
   workflow_dispatch:
@@ -25,7 +28,7 @@ jobs:
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
           APP_ENV: ${{ vars.APP_ENV || 'dev' }}
-          WECOM_SKIP_PROD_WEEKENDS: ${{ github.event_name == 'repository_dispatch' && '1' || '0' }}
+          WECOM_SKIP_PROD_WEEKENDS: ${{ (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && '1' || '0' }}
           WECOM_WEBHOOK_URL_PROD: ${{ secrets.WECOM_WEBHOOK_URL_PROD }}
           WECOM_WEBHOOK_URL_DEV: ${{ secrets.WECOM_WEBHOOK_URL_DEV }}
           PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
@@ -46,7 +49,7 @@ jobs:
           QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
           APP_ENV: ${{ vars.APP_ENV || 'dev' }}
-          WECOM_SKIP_PROD_WEEKENDS: ${{ github.event_name == 'repository_dispatch' && '1' || '0' }}
+          WECOM_SKIP_PROD_WEEKENDS: ${{ (github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && '1' || '0' }}
           WECOM_WEBHOOK_URL_PROD: ${{ secrets.WECOM_WEBHOOK_URL_PROD }}
           WECOM_WEBHOOK_URL_DEV: ${{ secrets.WECOM_WEBHOOK_URL_DEV }}
           PAGES_BASE_URL: ${{ vars.CF_PAGES_URL }}
