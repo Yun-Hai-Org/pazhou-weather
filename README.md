@@ -2,7 +2,7 @@
 
 仓库：[Yun-Hai-Org/pazhou-weather](https://github.com/Yun-Hai-Org/pazhou-weather)
 
-每天北京时间 **06:05**、**17:05** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
+每天北京时间 **05:55**、**16:55** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
 
 - 卡片配图（和风官方图标，按未来 6 小时主导天气自动选择）
 - 小时预报 + 日出日落摘要
@@ -10,7 +10,7 @@
 
 ## 架构
 
-- **定时**：Cloudflare Worker Cron（UTC `5 22 * * *` / `5 9 * * *`，对应北京 06:05 / 17:05）通过 `repository_dispatch` 触发 GitHub Actions（`event_type: weather-report`）
+- **定时**：GitHub Actions `schedule`（UTC `55 21 * * *` / `55 8 * * *`，对应北京 05:55 / 16:55）直接触发 Weather Report；也可手动 `workflow_dispatch` 或应急 `repository_dispatch`（`event_type: weather-report`）
 - **构建**：GHA 拉取和风天气 → Jinja2 渲染企业微信卡片 JSON 与详情页 HTML → 推送企业微信 → 部署到 Cloudflare Pages
 - **模板**：`templates/detail.html.j2`（详情页）、`templates/card.json.j2`（企业微信卡片）
 
@@ -63,26 +63,6 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 | Variable | CF_PAGES_URL | Cloudflare Pages 站点 URL（卡片跳转地址） |
 | Variable | CF_PAGES_PROJECT | Cloudflare Pages 项目名称 |
 
-### 4. Cloudflare Worker 定时触发
-
-Worker 位于 `workers/weather-cron/`，在北京时间 06:05 / 17:05 向 GitHub 发送 `repository_dispatch`。
-
-部署前设置 secrets（`wrangler secret put`）：
-
-| Secret | 说明 |
-| ------ | ---- |
-| GH_PAT | GitHub Personal Access Token（`repo` 权限，可触发 workflow） |
-| GH_OWNER | Yun-Hai-Org |
-| GH_REPO | pazhou-weather |
-
-```bash
-cd workers/weather-cron
-bunx wrangler deploy
-bunx wrangler secret put GH_PAT
-bunx wrangler secret put GH_OWNER
-bunx wrangler secret put GH_REPO
-```
-
 ## 本地试跑
 
 ```bash
@@ -96,7 +76,7 @@ uv sync
 
 ## GitHub Actions
 
-workflow 由 Cloudflare Worker 定时 `repository_dispatch` 或手动 `workflow_dispatch` 触发，将 `public/` 部署到 Cloudflare Pages。
+workflow 由 GitHub Actions `schedule` 定时触发，也可手动 `workflow_dispatch` 或应急 `repository_dispatch`；构建后将 `public/` 部署到 Cloudflare Pages。
 
 **Secret 迁移（一次性）：** 将原 `WECOM_WEBHOOK_URL` 的值迁移到 `WECOM_WEBHOOK_URL_PROD`，然后删除旧 Secret。workflow 已设置 `APP_ENV=prod`，推送走生产多群配置。
 
@@ -104,11 +84,11 @@ workflow 由 Cloudflare Worker 定时 `repository_dispatch` 或手动 `workflow_
 
 | 北京时间 | UTC cron | 触发方式 |
 | -------- | -------- | -------- |
-| 06:05 | 5 22 * * * | CF Worker → GHA |
-| 17:05 | 5 9 * * * | CF Worker → GHA |
+| 05:55 | 55 21 * * * | GHA `schedule` |
+| 16:55 | 55 8 * * * | GHA `schedule` |
 
 ## 费用
 
 - 和风天气：每月 5 万次内免费
-- GitHub Actions / Cloudflare Workers / Pages：免费额度内免费
+- GitHub Actions / Cloudflare Pages：免费额度内免费
 - 企业微信机器人：免费
