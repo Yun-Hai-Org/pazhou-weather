@@ -65,7 +65,7 @@ runs:
           printf '> 🌿 分支　　 %s \n' "$BRANCH"
           printf '> 👤 触发者　%s\n' "$ACTOR"
           printf '> ⚙️ 事件　　%s\n' "$EVENT_CN"
-          printf '> %s 状态　　 %s \n' "$STATUS_ICON" "$STATUS_COLOR" "$STATUS"
+          printf '> %s 状态　　 <%s> %s \n' "$STATUS_ICON" "$STATUS_COLOR" "$STATUS"
           if [ -n "$EXTRA" ]; then
             printf '> \n'
             while IFS= read -r line; do
@@ -79,26 +79,10 @@ runs:
             done <<< "$EXTRA"
           fi
           printf '> \n'
-          printf '> 👉 [查看 CI 详情](%s)\n' "$RUN_URL"
+          printf '> 👉 [查看详情](%s)\n' "$RUN_URL"
         } > /tmp/wecom_content.txt
 
-        CONTENT=$(cat /tmp/wecom_content.txt)
-        PAYLOAD=$(jq -nc --arg content "$CONTENT" '{msgtype:"markdown",markdown:{content:$content}}')
-
-        RESPONSE=$(curl -sS -X POST \
-          "$WECOM_WEBHOOK_URL" \
-          -H 'Content-Type: application/json' \
-          -d "$PAYLOAD" 2>/dev/null || echo '{"errcode":-1,"errmsg":"curl network error"}')
-
-        ERRMSG=$(echo "$RESPONSE" | jq -r '.errmsg // empty' 2>/dev/null || echo "parse error")
-        ERRCODE=$(echo "$RESPONSE" | jq -r '.errcode // empty' 2>/dev/null || echo "-1")
-        if [ "$ERRCODE" != "0" ] && [ -n "$ERRCODE" ]; then
-          echo "::warning::WeCom webhook returned errcode=${ERRCODE} errmsg=${ERRMSG}"
-          echo "Response: $RESPONSE"
-        else
-          echo "WeCom notification sent: ${TITLE}"
-        fi
-
+        python3 "${{ github.action_path }}/notify.py" /tmp/wecom_content.txt
         exit 0
 
     - name: Skip when WECOM_WEBHOOK_URL unset
