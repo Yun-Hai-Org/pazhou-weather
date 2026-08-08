@@ -2,7 +2,7 @@
 
 仓库：[Yun-Hai-Org/pazhou-weather](https://github.com/Yun-Hai-Org/pazhou-weather)
 
-每天北京时间 **05:55**、**16:55** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
+每天北京时间 **06:05**、**15:05** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
 
 - 卡片配图（和风官方图标，按未来 6 小时主导天气自动选择）
 - 小时预报 + 日出日落摘要
@@ -10,9 +10,11 @@
 
 ## 架构
 
-- **定时**：GitHub Actions `schedule`（UTC `55 21 * * *` / `55 8 * * *`，对应北京 05:55 / 16:55）直接触发 Weather Report；也可手动 `workflow_dispatch` 或应急 `repository_dispatch`（`event_type: weather-report`）
+- **定时**：AWS EventBridge Scheduler（`Asia/Shanghai`，北京 06:05 / 15:05）→ Lambda → GitHub `repository_dispatch`（`event_type: weather-report`）触发 Weather Report；也可手动 `workflow_dispatch`
 - **构建**：GHA 拉取和风天气 → Jinja2 渲染企业微信卡片 JSON 与详情页 HTML → 推送企业微信 → 部署到 Cloudflare Pages
+- **运维通知**：Weather Report 成功/失败均向 **dev 企业微信群**发送 markdown 模版消息（`WECOM_BOT_KEY`）
 - **模板**：`templates/detail.html.j2`（详情页）、`templates/card.json.j2`（企业微信卡片）
+- **调度 IaC**：`infra/eventbridge-weather/`
 
 ## 详情页
 
@@ -49,6 +51,8 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 2. 复制完整的 Webhook URL
 3. 本地填 `WECOM_WEBHOOK_URL_DEV`；生产在 GitHub Secret `WECOM_WEBHOOK_URL_PROD` 中配置多个 URL（英文逗号分隔）
 
+运维成功/失败通知另用 **dev 群**机器人 key（仅 key 部分，不是完整 URL）配置为 Secret `WECOM_BOT_KEY`。
+
 ### 3. Cloudflare Pages
 
 在组织 [Yun-Hai-Org](https://github.com/Yun-Hai-Org) 或仓库 **Settings → Secrets and variables → Actions** 中配置：
@@ -58,10 +62,16 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 | Secret | QWEATHER_API_KEY | 和风天气 API Key |
 | Secret | QWEATHER_API_HOST | 和风天气 API Host |
 | Secret | WECOM_WEBHOOK_URL_PROD | 生产环境企业微信 Webhook（多个用英文逗号分隔） |
+| Secret | WECOM_WEBHOOK_URL_DEV | 开发/测试群 Webhook（天气卡片） |
+| Secret | WECOM_BOT_KEY | Dev 群机器人 key（Weather Report 成功/失败 markdown 通知） |
 | Secret | CLOUDFLARE_API_TOKEN | Cloudflare API Token（Pages 部署权限） |
 | Secret | CLOUDFLARE_ACCOUNT_ID | Cloudflare Account ID |
 | Variable | CF_PAGES_URL | Cloudflare Pages 站点 URL（卡片跳转地址） |
 | Variable | CF_PAGES_PROJECT | Cloudflare Pages 项目名称 |
+
+### 4. AWS EventBridge 调度
+
+见 [`infra/eventbridge-weather/README.md`](infra/eventbridge-weather/README.md)：部署 CloudFormation、写入长期 `GH_PAT`、手动 Invoke Lambda 验证。
 
 ## 本地试跑
 
@@ -76,19 +86,20 @@ uv sync
 
 ## GitHub Actions
 
-workflow 由 GitHub Actions `schedule` 定时触发，也可手动 `workflow_dispatch` 或应急 `repository_dispatch`；构建后将 `public/` 部署到 Cloudflare Pages。
+Weather Report 由 EventBridge → `repository_dispatch` 定时触发，也可手动 `workflow_dispatch`；构建后将 `public/` 部署到 Cloudflare Pages，并向 dev 群发送成功/失败运维通知。
 
 **Secret 迁移（一次性）：** 将原 `WECOM_WEBHOOK_URL` 的值迁移到 `WECOM_WEBHOOK_URL_PROD`，然后删除旧 Secret。workflow 已设置 `APP_ENV=prod`，推送走生产多群配置。
 
 ## 定时说明
 
-| 北京时间 | UTC cron | 触发方式 |
-| -------- | -------- | -------- |
-| 05:55 | 55 21 * * * | GHA `schedule` |
-| 16:55 | 55 8 * * * | GHA `schedule` |
+| 北京时间 | Scheduler（Asia/Shanghai） | 触发方式 |
+| -------- | -------------------------- | -------- |
+| 06:05 | `cron(5 6 * * ? *)` | EventBridge → Lambda → `repository_dispatch` |
+| 15:05 | `cron(5 15 * * ? *)` | EventBridge → Lambda → `repository_dispatch` |
 
 ## 费用
 
 - 和风天气：每月 5 万次内免费
 - GitHub Actions / Cloudflare Pages：免费额度内免费
 - 企业微信机器人：免费
+- EventBridge Scheduler / Lambda：AWS 免费额度内通常可覆盖本项目调用量
