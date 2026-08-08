@@ -1,5 +1,5 @@
 name: Notify WeCom
-description: Send markdown message to WeCom group bot. Requires WECOM_BOT_KEY env var.
+description: Send markdown message to WeCom group bot. Requires WECOM_WEBHOOK_URL env var (full webhook URL).
 
 inputs:
   title:
@@ -17,10 +17,10 @@ runs:
   using: composite
   steps:
     - name: Send WeCom notification
-      if: ${{ env.WECOM_BOT_KEY != '' }}
+      if: ${{ env.WECOM_WEBHOOK_URL != '' }}
       shell: bash
       env:
-        WECOM_BOT_KEY: ${{ env.WECOM_BOT_KEY }}
+        WECOM_WEBHOOK_URL: ${{ env.WECOM_WEBHOOK_URL }}
         TITLE: ${{ inputs.title }}
         STATUS: ${{ inputs.status }}
         EXTRA: ${{ inputs.extra }}
@@ -36,7 +36,6 @@ runs:
         RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
         EVENT="$GITHUB_EVENT_NAME"
 
-        # 状态图标映射
         case "$STATUS" in
           success) STATUS_ICON="✅" ;;
           failure) STATUS_ICON="❌" ;;
@@ -44,7 +43,6 @@ runs:
           *) STATUS_ICON="ℹ️" ;;
         esac
 
-        # 事件名中文化
         case "$EVENT" in
           pull_request) EVENT_CN="Pull Request" ;;
           push) EVENT_CN="Push" ;;
@@ -54,15 +52,12 @@ runs:
           *) EVENT_CN="$EVENT" ;;
         esac
 
-        # 状态颜色
         if [ "$STATUS" = "failure" ]; then
           STATUS_COLOR="warning"
         else
           STATUS_COLOR="info"
         fi
 
-        # 用 printf 构造消息，确保 \n 是真正的换行符
-        # 企业微信 markdown 用 > 作为引用块，每行都要有 > 前缀
         {
           printf '%s\n' "$TITLE"
           printf '> \n'
@@ -73,10 +68,8 @@ runs:
           printf '> %s 状态　　 %s \n' "$STATUS_ICON" "$STATUS_COLOR" "$STATUS"
           if [ -n "$EXTRA" ]; then
             printf '> \n'
-            # extra 可能是多行，每行确保以 > 开头
             while IFS= read -r line; do
               if [ -n "$line" ]; then
-                # 去掉已有的 > 前缀（避免重复），再统一加
                 clean="${line#> }"
                 clean="${clean#>}"
                 printf '> %s\n' "$clean"
@@ -90,17 +83,13 @@ runs:
         } > /tmp/wecom_content.txt
 
         CONTENT=$(cat /tmp/wecom_content.txt)
-
-        # Build JSON payload with jq to avoid escaping issues
         PAYLOAD=$(jq -nc --arg content "$CONTENT" '{msgtype:"markdown",markdown:{content:$content}}')
 
-        # Send to WeCom webhook (network failures should not fail the CI step)
         RESPONSE=$(curl -sS -X POST \
-          "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECOM_BOT_KEY}" \
+          "$WECOM_WEBHOOK_URL" \
           -H 'Content-Type: application/json' \
           -d "$PAYLOAD" 2>/dev/null || echo '{"errcode":-1,"errmsg":"curl network error"}')
 
-        # Check response
         ERRMSG=$(echo "$RESPONSE" | jq -r '.errmsg // empty' 2>/dev/null || echo "parse error")
         ERRCODE=$(echo "$RESPONSE" | jq -r '.errcode // empty' 2>/dev/null || echo "-1")
         if [ "$ERRCODE" != "0" ] && [ -n "$ERRCODE" ]; then
@@ -110,10 +99,9 @@ runs:
           echo "WeCom notification sent: ${TITLE}"
         fi
 
-        # Always exit 0 — notification failures must not block CI
         exit 0
 
-    - name: Skip when WECOM_BOT_KEY unset
-      if: ${{ env.WECOM_BOT_KEY == '' }}
+    - name: Skip when WECOM_WEBHOOK_URL unset
+      if: ${{ env.WECOM_WEBHOOK_URL == '' }}
       shell: bash
-      run: echo "::warning::secret WECOM_BOT_KEY not set, skipping WeCom notification"
+      run: echo "::warning::WECOM_WEBHOOK_URL not set, skipping WeCom notification"
