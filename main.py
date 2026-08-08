@@ -69,18 +69,19 @@ def resolve_app_env() -> str:
 
 
 def resolve_webhook_urls() -> list[str]:
-    """APP_ENV=dev: DEV only. APP_ENV=prod: PROD only, weekdays."""
+    """APP_ENV=dev: DEV only. APP_ENV=prod: PROD on weekdays; DEV on weekends when skip flag set."""
     app_env = resolve_app_env()
     if app_env == "dev":
         urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL_DEV"))
         print(f"APP_ENV=dev: sending to {len(urls)} DEV webhook(s)")
         return urls
-    urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL_PROD"))
     skip = os.environ.get("WECOM_SKIP_PROD_WEEKENDS", "").strip() == "1"
     weekend = datetime.now(TZ).weekday() in (5, 6)
     if skip and weekend:
-        print(f"APP_ENV=prod: weekend, skipping {len(urls)} PROD webhook(s)")
-        return []
+        urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL_DEV"))
+        print(f"APP_ENV=prod: weekend, sending to {len(urls)} DEV webhook(s) (PROD skipped)")
+        return urls
+    urls = parse_webhook_urls(require_env("WECOM_WEBHOOK_URL_PROD"))
     print(f"APP_ENV=prod: sending to {len(urls)} PROD webhook(s)")
     return urls
 
@@ -1006,7 +1007,7 @@ def main() -> None:
     card = render_card(context)
     if os.environ.get("WECOM_SKIP_SEND", "").strip() != "1":
         if not webhook_urls:
-            print("No webhooks to send (weekend skip).")
+            print("No webhooks to send.")
         else:
             send_wecom_template_card_all(webhook_urls, card)
             print(f"sent to {len(webhook_urls)} webhook(s).")
