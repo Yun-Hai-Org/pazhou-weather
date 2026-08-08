@@ -1,33 +1,22 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: EventBridge Scheduler -> Lambda -> GitHub repository_dispatch for Weather Report
+Description: EventBridge Scheduler -> Lambda -> GitHub repository_dispatch (PAT in SSM SecureString)
 
 Parameters:
   GitHubOwner:
     Type: String
     Default: Yun-Hai-Org
-    Description: GitHub repository owner
   GitHubRepo:
     Type: String
     Default: pazhou-weather
-    Description: GitHub repository name
-  GitHubPat:
-    Type: String
-    NoEcho: true
-    MinLength: 1
-    Description: Fine-grained or classic PAT that can create repository_dispatch
   EventType:
     Type: String
     Default: weather-report
-    Description: repository_dispatch event_type
+  PatParameterName:
+    Type: String
+    Default: /pazhou-weather-dispatcher/github-pat
+    Description: Existing SSM SecureString parameter name (create via aws ssm put-parameter)
 
 Resources:
-  GitHubPatSecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub "${AWS::StackName}/github-pat"
-      Description: GitHub PAT for Weather Report repository_dispatch
-      SecretString: !Ref GitHubPat
-
   DispatchLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -40,15 +29,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: ReadGitHubPatSecret
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref GitHubPatSecret
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
 
   DispatchFunction:
     Type: AWS::Lambda::Function
@@ -65,7 +46,7 @@ Resources:
           GH_OWNER: !Ref GitHubOwner
           GH_REPO: !Ref GitHubRepo
           EVENT_TYPE: !Ref EventType
-          SECRET_ARN: !Ref GitHubPatSecret
+          PARAM_NAME: !Ref PatParameterName
       Code:
         ZipFile: |
           import json
@@ -75,18 +56,20 @@ Resources:
 
           import boto3
 
-          sm = boto3.client("secretsmanager")
+          ssm = boto3.client("ssm")
 
 
           def handler(event, context):
               owner = os.environ["GH_OWNER"]
               repo = os.environ["GH_REPO"]
               event_type = os.environ.get("EVENT_TYPE", "weather-report")
-              secret_arn = os.environ["SECRET_ARN"]
+              param_name = os.environ["PARAM_NAME"]
 
-              token = sm.get_secret_value(SecretId=secret_arn)["SecretString"].strip()
+              token = ssm.get_parameter(
+                  Name=param_name, WithDecryption=True
+              )["Parameter"]["Value"].strip()
               if not token:
-                  raise RuntimeError("GitHub PAT secret is empty")
+                  raise RuntimeError("GitHub PAT parameter is empty")
 
               url = f"https://api.github.com/repos/{owner}/{repo}/dispatches"
               body = json.dumps({"event_type": event_type}).encode("utf-8")
@@ -183,14 +166,11 @@ Resources:
 
 Outputs:
   DispatchFunctionName:
-    Description: Lambda function name
     Value: !Ref DispatchFunction
   DispatchFunctionArn:
-    Description: Lambda function ARN
     Value: !GetAtt DispatchFunction.Arn
-  GitHubPatSecretArn:
-    Description: Secrets Manager ARN for GitHub PAT
-    Value: !Ref GitHubPatSecret
+  GitHubPatParameterName:
+    Value: !Ref PatParameterName
   MorningScheduleName:
     Value: !Ref MorningSchedule
   AfternoonScheduleName:

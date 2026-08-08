@@ -70,7 +70,7 @@ API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不
 
 ### 4. AWS EventBridge 调度
 
-见 [`infra/eventbridge-weather/README.md`](infra/eventbridge-weather/README.md)：部署 CloudFormation、写入长期 `GH_PAT`、手动 Invoke Lambda 验证。
+见 [`infra/eventbridge-weather/README.md`](infra/eventbridge-weather/README.md)：部署 CloudFormation、PAT 存 SSM SecureString、手动 Invoke Lambda 验证。
 
 ## 本地试跑
 
