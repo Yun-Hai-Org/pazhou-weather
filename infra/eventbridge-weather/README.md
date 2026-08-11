@@ -1,6 +1,6 @@
 # EventBridge Weather Dispatcher
 
-EventBridge Scheduler（`Asia/Shanghai`，北京 **06:05 / 15:05**）→ Lambda → GitHub `repository_dispatch`。
+EventBridge Scheduler（`Asia/Shanghai`，北京 **06:05 / 17:05**）→ Lambda → GitHub `repository_dispatch`。
 
 GitHub PAT 存在 **SSM Parameter Store SecureString（Standard，永久免费）**，不使用 Secrets Manager，避免按月收费。
 

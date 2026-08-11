@@ -151,10 +151,10 @@ Resources:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: !Sub "${AWS::StackName}-afternoon"
-      Description: Weather Report afternoon slot (Beijing 15:05)
+      Description: Weather Report afternoon slot (Beijing 17:05)
       FlexibleTimeWindow:
         Mode: "OFF"
-      ScheduleExpression: cron(5 15 * * ? *)
+      ScheduleExpression: cron(5 17 * * ? *)
       ScheduleExpressionTimezone: Asia/Shanghai
       State: ENABLED
       Target:
