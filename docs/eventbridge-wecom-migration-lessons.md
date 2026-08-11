@@ -25,7 +25,7 @@
 ## 2. 最终架构（已落地）
 
 ```
-北京 06:05 / 15:05（Asia/Shanghai）
+北京 06:05 / 17:05（Asia/Shanghai）
   → EventBridge Scheduler（us-west-2）
   → Lambda: pazhou-weather-dispatcher-dispatch
   → GitHub API repository_dispatch (event_type=weather-report)
@@ -41,7 +41,7 @@
 | AWS 账号 | `947921574020`（YunHai） |
 | Region | **us-west-2（Oregon）** |
 | Stack | `pazhou-weather-dispatcher` |
-| Schedules | `…-morning` / `…-afternoon`，`cron(5 6 * * ? *)` / `cron(5 15 * * ? *)` |
+| Schedules | `…-morning` / `…-afternoon`，`cron(5 6 * * ? *)` / `cron(5 17 * * ? *)` |
 | PAT 存储 | SSM `/pazhou-weather-dispatcher/github-pat`（SecureString Standard） |
 | 触发事件 | `repository_dispatch` → notify 文案「外部调度」 |
 
@@ -82,7 +82,7 @@
 
 ### 3.4 推送时刻
 
-北京 **06:05 / 15:05**（曾讨论过 05:55/16:55，最终与业务约定对齐为整点后 5 分）。
+北京 **06:05 / 17:05**（曾讨论过 05:55/16:55，最终与业务约定对齐为整点后 5 分）。
 
 ---
 

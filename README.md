@@ -2,7 +2,7 @@
 
 仓库：[Yun-Hai-Org/pazhou-weather](https://github.com/Yun-Hai-Org/pazhou-weather)
 
-每天北京时间 **06:05**、**15:05** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
+每天北京时间 **06:05**、**17:05** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
 
 - 卡片配图（和风官方图标，按未来 6 小时主导天气自动选择）
 - 小时预报 + 日出日落摘要
@@ -10,7 +10,7 @@
 
 ## 架构
 
-- **定时**：AWS EventBridge Scheduler（`Asia/Shanghai`，北京 06:05 / 15:05）→ Lambda → GitHub `repository_dispatch`（`event_type: weather-report`）触发 Weather Report；也可手动 `workflow_dispatch`
+- **定时**：AWS EventBridge Scheduler（`Asia/Shanghai`，北京 06:05 / 17:05）→ Lambda → GitHub `repository_dispatch`（`event_type: weather-report`）触发 Weather Report；也可手动 `workflow_dispatch`
 - **构建**：GHA 拉取和风天气 → Jinja2 渲染企业微信卡片 JSON 与详情页 HTML → 推送企业微信 → 部署到 Cloudflare Pages
 - **运维通知**：Weather Report 成功/失败均向 **dev 企业微信群**发送 markdown 模版消息（`WECOM_WEBHOOK_URL_DEV`）
 - **模板**：`templates/detail.html.j2`（详情页）、`templates/card.json.j2`（企业微信卡片）
@@ -94,7 +94,7 @@ Weather Report 由 EventBridge → `repository_dispatch` 定时触发，也可�
 | 北京时间 | Scheduler（Asia/Shanghai） | 触发方式 |
 | -------- | -------------------------- | -------- |
 | 06:05 | `cron(5 6 * * ? *)` | EventBridge → Lambda → `repository_dispatch` |
-| 15:05 | `cron(5 15 * * ? *)` | EventBridge → Lambda → `repository_dispatch` |
+| 17:05 | `cron(5 17 * * ? *)` | EventBridge → Lambda → `repository_dispatch` |
 
 ## 费用
 
