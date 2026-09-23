@@ -34,12 +34,11 @@ jobs:
         run: uv run python main.py
       - name: Deploy to Cloudflare Pages
         if: always()
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: ${{ vars.CF_PAGES_PROJECT }}
-          directory: public
+          command: pages deploy public --project-name=${{ vars.CF_PAGES_PROJECT }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
       - name: Send WeCom weather card
         env:
