@@ -16,6 +16,7 @@ function weatherEmoji(text: string): string {
 
 export function buildCard(context: ReportContext): Record<string, unknown> {
   const now = context.weather.now;
+  const holidayIcon = context.holiday.label === "休息日" ? "🏖️" : "💼";
   const line1 = `${weatherEmoji(now.text)} ${now.text} ${now.temp}°C | 体感 ${now.feelsLike}°C`;
   const line2 = `💧 湿度 ${now.humidity}% | 🌬️ ${now.windDir} ${now.windScale}级`;
   const items: Array<{ title: string; desc: string }> = [{
@@ -35,7 +36,7 @@ export function buildCard(context: ReportContext): Record<string, unknown> {
   return {
     card_type: "news_notice",
     source: { icon_url: "https://openweathermap.org/img/wn/03d@2x.png", desc: "天气预报", desc_color: 0 },
-    main_title: { title: truncate(`🌤️ ${context.city}`, 26), desc: truncate(`📅 ${context.date} 周${context.weekday} ${context.time} · ${context.holiday.label}`, 30) },
+    main_title: { title: truncate(`🌤️ ${context.city}`, 26), desc: truncate(`📅 ${context.date} 周${context.weekday} ${context.time} · ${holidayIcon} ${context.holiday.label}`, 30) },
     card_image: { url: context.imageUrl, aspect_ratio: 1.78 },
     vertical_content_list: items,
     card_action: { type: 1, url: context.jumpUrl }

@@ -11,6 +11,10 @@ function aqiColor(value: number): string {
   return "#9333ea";
 }
 
+function holidayIcon(label: string): string {
+  return label === "休息日" ? "🏖️" : "💼";
+}
+
 export function renderDetailPage(context: ReportContext): string {
   const now = context.weather.now;
   const air = context.weather.air as { aqi?: number | string; category?: string; primaryPollutant?: { name?: string }; health?: { effect?: string } } | null;
@@ -92,7 +96,7 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
   <div class="loc">📍 ${context.city}</div>
   <div class="icon"><i class="qi qi-${now.icon}"></i></div>
   <div class="temp">${now.temp}°</div>
-  <div class="text">${now.text} · ${context.holiday.label}</div>
+  <div class="text">${now.text} · ${holidayIcon(context.holiday.label)} ${context.holiday.label}</div>
   <div class="meta">
     <span>体感 ${now.feelsLike}°</span>
     <span>湿度 ${now.humidity}%</span>
@@ -118,6 +122,6 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
   return html`<div class="li"><div class="n">${icon} ${item.name}</div><div class="v">${item.category || item.text || ""}</div></div>`;
 })}</div>` : html`<div class="sec-empty">暂无生活指数数据</div>`}</div>
 ${context.solarTerm ? html`<h2>🎋 节气</h2><div class="card"><div class="poem">${context.solarTerm.name}</div><div>${context.solarTerm.poem}</div><div>${context.solarTerm.author}《${context.solarTerm.origin}》</div></div>` : context.poetry.content ? html`<h2>📖 画作题诗</h2><div class="card"><div class="poem">${context.poetry.content}</div><div>${context.poetry.author ? html`${context.poetry.author} · ` : ""}${context.poetry.origin}</div></div>` : ""}
-<div class="foot">${context.date} 周${context.weekday} · ${context.holiday.label} · ${context.city}</div>
+<div class="foot">${context.date} 周${context.weekday} · ${holidayIcon(context.holiday.label)} ${context.holiday.label} · ${context.city}</div>
 </body></html>`) as string;
 }
