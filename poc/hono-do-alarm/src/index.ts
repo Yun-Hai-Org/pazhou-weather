@@ -44,4 +44,9 @@ app.get("/assets/solar-terms/:file", async (c) => {
   return c.body(value, 200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runAlarm(env as unknown as Parameters<typeof runAlarm>[0]));
+  }
+};
