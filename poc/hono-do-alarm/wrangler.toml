@@ -1,0 +1,36 @@
+name = "weather-hono-do-alarm"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[durable_objects.bindings]]
+name = "SLOT_DO"
+class_name = "SlotScheduler"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SlotScheduler"]
+
+[triggers]
+crons = ["5 22 * * *", "5 9 * * *"]
+
+[vars]
+APP_ENV = "dev"
+QWEATHER_API_HOST = "mx3yfu7e7k.re.qweatherapi.com"
+CITY_NAME = "广州·海珠琶洲"
+CITY_LOCATION = "101280108"
+CITY_COORDS = "113.384,23.101"
+CLOUDFLARE_ACCOUNT_ID = "c1ccf440217fb5d3927e491b3ff7cf93"
+CF_PAGES_PROJECT = "pazhou-weather"
+PUBLIC_BASE_URL = "https://weather-card.20250101.ggff.net"
+QWEATHER_API_KEY = "01bd76a4eeab481f835cc536f997e561"
+WECOM_WEBHOOK_URL_PROD = ""
+WECOM_WEBHOOK_URL_DEV = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=da5cbdc8-7eb7-41a8-a150-9112b0464ae3"
+WECOM_SKIP_SEND = "0"
+
+[[kv_namespaces]]
+binding = "ASSETS"
+id = "62f5dfe0a95a468d81e0355bbad9a614"
