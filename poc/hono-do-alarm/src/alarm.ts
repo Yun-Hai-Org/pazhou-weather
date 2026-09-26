@@ -3,7 +3,6 @@ import { buildCard, sendCards } from "./wecom";
 import { uploadToPages } from "./pages-upload";
 import { renderDetailPage } from "./render";
 import { resolveHoliday } from "./holiday";
-import { notifySuccess } from "./notify";
 import { solarTermFor } from "./solar-terms";
 import { fetchDailyChinesePainting } from "./cleveland-art";
 import { businessSlot, nextAlarmIso } from "./time";
@@ -78,7 +77,6 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
         body: JSON.stringify({ dev, stage: "pages-upload", slot: slotKey, requestId, error: String(error) })
       });
     }
-    await notifySuccess(dev, slotKey, requestId, pagesDeploymentId);
     await scheduler.fetch("https://do/sent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
