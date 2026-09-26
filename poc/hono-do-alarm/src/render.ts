@@ -56,7 +56,7 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
 .sec-empty{color:var(--muted);padding:6px 0;font-size:14px}
 .qi{font-style:normal}
 .now{color:#fff;padding:28px 20px 24px;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.15);text-align:center;min-height:240px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}
-.now::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(15,23,42,.2),rgba(15,23,42,.65)),url('${context.imageUrl}');background-size:contain;background-repeat:no-repeat;background-position:center}
+.now::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(15,23,42,.2),rgba(15,23,42,.65)),url('${context.imageUrl}');background-size:cover;background-position:center}
 .now>*{position:relative;z-index:1}
 .now .loc{font-size:14px;opacity:.92;display:flex;align-items:center;justify-content:center;gap:4px}
 .now .icon{font-size:72px;margin:6px 0;line-height:1}
@@ -104,10 +104,10 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
 </style>`)}</head>
 <body>
 <div class="now">
-  <div class="loc">📍 ${context.city}</div>
+  <div class="loc">${holidayIcon(context.holiday.label)} ${context.city}</div>
   <div class="icon"><i class="qi qi-${now.icon}"></i></div>
   <div class="temp">${now.temp}°</div>
-  <div class="text">${now.text} · ${holidayIcon(context.holiday.label)}</div>
+  <div class="text">${now.text}</div>
   <div class="meta">
     <span>体感 ${now.feelsLike}°</span>
     <span>湿度 ${now.humidity}%</span>
@@ -133,6 +133,6 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
   return html`<div class="li"><div class="n">${icon} ${item.name}</div><div class="v">${item.category || item.text || ""}</div></div>`;
 })}</div></div>
 ${context.solarTerm ? html`<h2>🎋 节气</h2><div class="card"><div class="poem">${context.solarTerm.name}</div><div>${context.solarTerm.poem}</div><div>${context.solarTerm.author}《${context.solarTerm.origin}》</div></div>` : context.poetry.content ? html`<h2>📖 画作题诗</h2><div class="card"><div class="poem">${context.poetry.content}</div><div>${context.poetry.author ? html`${context.poetry.author} · ` : ""}${context.poetry.origin}</div></div>` : ""}
-<div class="foot">${context.date} 周${context.weekday} · ${holidayIcon(context.holiday.label)} · ${context.city}</div>
+<div class="foot">${context.date} 周${context.weekday} · ${context.city}</div>
 </body></html>`) as string;
 }
