@@ -11,4 +11,7 @@ public/
 _bmad-output/
 
 .wrangler/
+poc/hono-do-alarm/.wrangler-home/
+poc/hono-do-alarm/node_modules/
+poc/hono-do-alarm/.envrc
 docs/hooks-optimization-report.md

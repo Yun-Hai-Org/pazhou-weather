@@ -15,7 +15,7 @@ tag = "v1"
 new_sqlite_classes = ["SlotScheduler"]
 
 [triggers]
-crons = ["5 22 * * *", "5 9 * * *"]
+crons = ["0 * * * *"]
 
 [vars]
 APP_ENV = "dev"
@@ -30,6 +30,7 @@ QWEATHER_API_KEY = "01bd76a4eeab481f835cc536f997e561"
 WECOM_WEBHOOK_URL_PROD = ""
 WECOM_WEBHOOK_URL_DEV = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=da5cbdc8-7eb7-41a8-a150-9112b0464ae3"
 WECOM_SKIP_SEND = "0"
+FORCE_HOURLY_RUN = "1"
 
 [[kv_namespaces]]
 binding = "ASSETS"

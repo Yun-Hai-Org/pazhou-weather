@@ -24,6 +24,7 @@ const PAGE_URLS: Record<string, string> = {
 
 export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promise<{ status: string; slot: string; pagesDeploymentId?: string }> {
   const business = businessSlot();
+  const forceHourly = String(env.FORCE_HOURLY_RUN || "") === "1";
   const requestId = crypto.randomUUID();
   const target = { date: date || business.date, slot: slot || business.slot };
   const slotKey = `${target.date}:${target.slot}`;
@@ -35,7 +36,9 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
   });
   let claimResult: { status: string } = { status: "claimed" };
   try { claimResult = await claim.json() as { status: string }; } catch { /* empty body */ }
-  if (claimResult.status !== "claimed") return { status: "duplicate", slot: slotKey };
+  if (claimResult.status !== "claimed" && !(forceHourly && !date && !slot)) {
+    return { status: "duplicate", slot: slotKey };
+  }
   const config = configFromEnv(env as Record<string, string | undefined>);
   const dev = config.devWebhooks;
   try {
@@ -77,7 +80,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
         body: JSON.stringify({ dev, stage: "pages-upload", slot: slotKey, requestId, error: String(error) })
       });
     }
-    await scheduler.fetch("https://do/sent", {
+    if (!forceHourly || date || slot) await scheduler.fetch("https://do/sent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...target, pagesDeploymentId })
@@ -89,7 +92,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dev, stage: "report", slot: slotKey, requestId, error: String(error) })
     });
-    await scheduler.fetch("https://do/release", {
+    if (!forceHourly || date || slot) await scheduler.fetch("https://do/release", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(target)
