@@ -109,7 +109,14 @@ h2{font-size:13px;color:var(--sub);margin:20px 0 10px;font-weight:600;letter-spa
 <h2>🗓️ 未来 7 天</h2><div class="card days">${context.weather.daily7.map((item, index) => html`<div class="day"><div class="lab">${index ? item.fxDate : "今天"}</div><div class="ico"><i class="qi qi-${item.iconDay}"></i></div><div class="txt">${item.textDay}</div><div class="tmp">${item.tempMax}° <span class="lo">${item.tempMin}°</span></div></div>`)}</div></div>
 <h2>🌫️ 空气质量</h2><div class="card">${air ? html`<div class="aq"><div class="num">${air.aqi}</div>${air.category ? html`<span class="pill" style="background:${aqiColor(aqi)}">${air.category}</span>` : ""}</div>${air.primaryPollutant?.name ? html`<div class="prim">主要污染物 · ${air.primaryPollutant.name}</div>` : ""}${air.health?.effect ? html`<div class="adv">🩺 ${air.health.effect}</div>` : ""}` : html`<div class="sec-empty">🌫️ 暂无空气质量数据</div>`}</div>
 <h2>🌅 日出日落 · 月相</h2><div class="card">${sun?.sunrise ? html`<div class="astro"><div class="item"><span class="ic">🌅</span><div><div class="lbl">日出</div><div class="val">${sun.sunrise.slice(11, 16)}</div></div></div>${sun.sunset ? html`<div class="item"><span class="ic">🌇</span><div><div class="lbl">日落</div><div class="val">${sun.sunset.slice(11, 16)}</div></div></div>` : ""}${moon ? html`<div class="item"><span class="ic">🌙</span><div><div class="lbl">月相</div><div class="val">${moon?.moonPhase?.[0]?.name || moon?.name || ""}</div></div></div>` : ""}</div>` : html`<div class="sec-empty">🌌 暂无天文数据</div>`}</div>
-<h2>💡 生活提醒</h2><div class="card">${context.weather.indices.length ? html`<div class="life">${context.weather.indices.map((item) => html`<div class="li"><div class="n">${item.name}</div><div class="v">${item.category || item.text || ""}</div></div>`)}</div>` : html`<div class="sec-empty">暂无生活指数数据</div>`}</div>
+<h2>💡 生活提醒</h2><div class="card">${context.weather.indices.length ? html`<div class="life">${context.weather.indices.map((item) => {
+  const icons: Record<string, string> = {
+    "1": "🏃", "3": "👔", "5": "☀️", "6": "✈️", "8": "😌", "9": "🤧",
+    "10": "💨", "11": "❄️", "14": "👕", "15": "🚗", "16": "🧴"
+  };
+  const icon = icons[item.type] || "💡";
+  return html`<div class="li"><div class="n">${icon} ${item.name}</div><div class="v">${item.category || item.text || ""}</div></div>`;
+})}</div>` : html`<div class="sec-empty">暂无生活指数数据</div>`}</div>
 ${context.solarTerm ? html`<h2>🎋 节气</h2><div class="card"><div class="poem">${context.solarTerm.name}</div><div>${context.solarTerm.poem}</div><div>${context.solarTerm.author}《${context.solarTerm.origin}》</div></div>` : context.poetry.content ? html`<h2>📖 画作题诗</h2><div class="card"><div class="poem">${context.poetry.content}</div><div>${context.poetry.author ? html`${context.poetry.author} · ` : ""}${context.poetry.origin}</div></div>` : ""}
 <div class="foot">${context.date} 周${context.weekday} · ${context.holiday.label} · ${context.city}</div>
 </body></html>`) as string;
