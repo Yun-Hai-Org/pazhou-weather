@@ -26,10 +26,12 @@ export function buildCard(context: ReportContext): Record<string, unknown> {
     return `🕐${hourOnly(item.fxTime)} ${weatherEmoji(item.text)}${item.text} ${item.temp}°C`;
   }).join("\n");
   if (hourly) items.push({ title: "⏭️ 未来3小时", desc: hourly });
-  items.push({
-    title: context.solarTerm ? "🎋 节气诗句" : "📖 今日诗句",
-    desc: truncate(`${context.poetry.content} —— ${context.poetry.author}《${context.poetry.origin}》`)
-  });
+  if (context.poetry.content) {
+    items.push({
+      title: context.solarTerm ? "🎋 节气诗句" : "📖 画作题诗",
+      desc: truncate(`${context.poetry.content}${context.poetry.author ? ` —— ${context.poetry.author}` : ""}${context.poetry.origin ? `《${context.poetry.origin}》` : ""}`)
+    });
+  }
   return {
     card_type: "news_notice",
     source: { icon_url: "https://openweathermap.org/img/wn/03d@2x.png", desc: "天气预报", desc_color: 0 },
