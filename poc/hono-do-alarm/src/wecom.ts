@@ -14,6 +14,15 @@ function weatherEmoji(text: string): string {
   return "☀️";
 }
 
+function umbrellaAdvice(hourly: Array<Record<string, string>>): string {
+  for (const item of hourly.slice(0, 6)) {
+    const text = item.text || "";
+    const pop = Number(item.pop || 0);
+    if (/雨|雪|雹/.test(text) || pop >= 40) return "☂️ 建议带伞";
+  }
+  return "😎 无需带伞";
+}
+
 export function buildCard(context: ReportContext): Record<string, unknown> {
   const now = context.weather.now;
   const line1 = `${weatherEmoji(now.text)} ${now.text} ${now.temp}°C | 体感 ${now.feelsLike}°C`;
@@ -22,6 +31,7 @@ export function buildCard(context: ReportContext): Record<string, unknown> {
     title: "🌡️ 天气实况",
     desc: truncate(`${line1}\n${line2}`)
   }];
+  items.push({ title: "☂️ 出行提醒", desc: umbrellaAdvice(context.weather.hourly) });
   const hourly = context.weather.hourly.slice(0, 3).map((item) => {
     return `🕐${hourOnly(item.fxTime)} ${weatherEmoji(item.text)}${item.text} ${item.temp}°C`;
   }).join("\n");
