@@ -48,5 +48,6 @@ export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runAlarm(env as unknown as Parameters<typeof runAlarm>[0]));
+    ctx.waitUntil(scheduleNext(env as unknown as Parameters<typeof scheduleNext>[0]));
   }
 };
