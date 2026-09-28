@@ -5,6 +5,16 @@ import { SlotScheduler } from "./do";
 
 export { SlotScheduler };
 
+function pageToken(env: Env): string | null {
+  const token = env.PUBLIC_PAGE_TOKEN?.trim();
+  return token || null;
+}
+
+function authorized(c: { req: { param(key: string): string }; env: Env }): boolean {
+  const expected = pageToken(c.env);
+  return Boolean(expected) && c.req.param("token") === expected;
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 app.get("/", (c) => c.json({ status: "ok", service: "weather-hono-do-alarm" }));
@@ -22,13 +32,15 @@ app.post("/schedule", async (c) => {
 
 app.get("/health", (c) => c.json({ status: "healthy" }));
 
-app.get("/detail", async (c) => {
+app.get("/page/:token/detail", async (c) => {
+  if (!authorized(c)) return c.text("Not found", 404);
   const html = await (c.env as { ASSETS: { get(key: string): Promise<string | null> } }).ASSETS.get("index.html");
   if (!html) return c.text("Not found", 404);
   return c.html(html);
 });
 
-app.get("/assets/card/:file", async (c) => {
+app.get("/page/:token/assets/card/:file", async (c) => {
+  if (!authorized(c)) return c.text("Not found", 404);
   const file = c.req.param("file");
   if (!/^[a-z]+\.png$/.test(file)) return c.text("Not found", 404);
   const value = await c.env.ASSETS.get(`assets/card/${file}`, "arrayBuffer");
@@ -36,7 +48,8 @@ app.get("/assets/card/:file", async (c) => {
   return c.body(value, 200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" });
 });
 
-app.get("/assets/solar-terms/:file", async (c) => {
+app.get("/page/:token/assets/solar-terms/:file", async (c) => {
+  if (!authorized(c)) return c.text("Not found", 404);
   const file = c.req.param("file");
   if (!/^\d+\.jpg$/.test(file)) return c.text("Not found", 404);
   const value = await c.env.ASSETS.get(`assets/solar-terms/${file}`, "arrayBuffer");

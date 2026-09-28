@@ -51,6 +51,8 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
       : { content: "", author: "", origin: "" };
     const category = imageCategory(weather.now.icon, weather.now.text);
     const base = config.pagesBaseUrl.replace(/\/$/, "");
+    const pageToken = String(env.PUBLIC_PAGE_TOKEN || "").trim();
+    if (!pageToken) throw new Error("Missing PUBLIC_PAGE_TOKEN");
     const context = {
       slot: target.slot,
       requestId,
@@ -63,7 +65,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
       solarTerm: term,
       poetry,
       imageUrl: term ? `${base}/${term.imageUrl}` : cleveland?.imageUrl || `${base}/${PAGE_URLS[category]}`,
-      jumpUrl: `${base}/detail`
+      jumpUrl: `${base}/page/${pageToken}/detail`
     };
     const card = buildCard(context);
     if (!config.skipSend) await sendCards(config.devWebhooks, card);

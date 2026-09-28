@@ -31,6 +31,7 @@ WECOM_WEBHOOK_URL_PROD = ""
 WECOM_WEBHOOK_URL_DEV = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=da5cbdc8-7eb7-41a8-a150-9112b0464ae3"
 WECOM_SKIP_SEND = "0"
 FORCE_HOURLY_RUN = "1"
+PUBLIC_PAGE_TOKEN = "0b7d2f4f6f6b453b8973d1969ed85a3d"
 
 [[kv_namespaces]]
 binding = "ASSETS"

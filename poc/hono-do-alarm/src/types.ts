@@ -75,4 +75,5 @@ export interface KVNamespace {
 export interface Env extends Record<string, unknown> {
   SLOT_DO: DurableObjectNamespace;
   ASSETS: KVNamespace;
+  PUBLIC_PAGE_TOKEN?: string;
 }
