@@ -29,9 +29,9 @@ export class SlotScheduler extends DurableObject<DoEnv> {
       return Response.json({ status: "released" });
     }
     if (url.pathname === "/notify") {
-      let devUrls: string[] = [];
-      try { devUrls = JSON.parse(String(body.dev || "[]")) as string[]; } catch { /* invalid dev json */ }
-      await notifyFailure(devUrls, body.stage || "unknown", `${date}:${slot}`, body.requestId || "", body.error || "unknown");
+      let webhooks: string[] = [];
+      try { webhooks = JSON.parse(String(body.webhooks || "[]")) as string[]; } catch { /* invalid webhook json */ }
+      await notifyFailure(webhooks, body.stage || "unknown", `${date}:${slot}`, body.requestId || "", body.error || "unknown");
       return Response.json({ status: "notified" });
     }
     if (url.pathname === "/schedule") {
