@@ -41,6 +41,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
   }
   const config = configFromEnv(env as Record<string, string | undefined>);
   const webhooks = config.prodWebhooks;
+  const dev = config.devWebhooks;
   try {
     const weather = await fetchWeather(config, target.date.replace(/-/g, ""));
     const holiday = await resolveHoliday(target.date);
@@ -79,7 +80,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
       await scheduler.fetch("https://do/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ webhooks, stage: "pages-upload", slot: slotKey, requestId, error: String(error) })
+        body: JSON.stringify({ dev, stage: "pages-upload", slot: slotKey, requestId, error: String(error) })
       });
     }
     if (!forceHourly || date || slot) await scheduler.fetch("https://do/sent", {
@@ -92,7 +93,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
     await scheduler.fetch("https://do/notify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ webhooks, stage: "report", slot: slotKey, requestId, error: String(error) })
+      body: JSON.stringify({ dev, stage: "report", slot: slotKey, requestId, error: String(error) })
     });
     if (!forceHourly || date || slot) await scheduler.fetch("https://do/release", {
       method: "POST",
