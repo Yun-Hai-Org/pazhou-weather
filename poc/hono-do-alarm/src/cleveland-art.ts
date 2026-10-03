@@ -1,3 +1,5 @@
+import type { Slot } from "./types";
+
 export interface ClevelandArtwork {
   imageUrl: string;
   title: string;
@@ -17,22 +19,41 @@ interface ClevelandApiResponse {
   }>;
 }
 
-const CLEVELAND_TOTAL = 120;
+const CLEVELAND_PAGE_SIZE = 50;
+const CLEVELAND_PAGES = [0, 50, 100] as const;
 
-export async function fetchDailyChinesePainting(date: string): Promise<ClevelandArtwork | null> {
+function coverImage1024x576(imageUrl: string): string {
+  const cropper = new URL("https://wsrv.nl/");
+  cropper.searchParams.set("url", imageUrl);
+  cropper.searchParams.set("w", "1024");
+  cropper.searchParams.set("h", "576");
+  cropper.searchParams.set("fit", "cover");
+  cropper.searchParams.set("output", "jpg");
+  return cropper.toString();
+}
+
+export async function fetchDailyChinesePainting(date: string, slot?: Slot): Promise<ClevelandArtwork | null> {
   try {
     const dayIndex = Math.floor(Date.parse(`${date}T00:00:00Z`) / 86_400_000);
-    const offset = ((dayIndex % CLEVELAND_TOTAL) + CLEVELAND_TOTAL) % CLEVELAND_TOTAL;
-    const page = Math.floor(offset / 50) + 1;
-    const skip = (page - 1) * 50;
-    const url = `https://openaccess-api.clevelandart.org/api/artworks/?q=chinese%20landscape&has_image=1&cc0=1&type=Painting&limit=50&skip=${skip}`;
-    const response = await fetch(url, { cf: { cacheTtl: 86_400 } });
-    if (!response.ok) return null;
-    const payload = await response.json() as ClevelandApiResponse;
-    const items = (payload.data || []).filter((item) =>
-      item.images?.web?.url && item.culture?.some((entry) => entry.includes("China"))
-    );
-    const item = items[offset % 50];
+    const dayOffset = dayIndex * 2 + (slot === "pm" ? 1 : 0);
+
+    const pageResponses = await Promise.all(CLEVELAND_PAGES.map(async (skip) => {
+      const url = `https://openaccess-api.clevelandart.org/api/artworks/?q=chinese%20landscape&has_image=1&cc0=1&type=Painting&limit=${CLEVELAND_PAGE_SIZE}&skip=${skip}`;
+      const response = await fetch(url, { cf: { cacheTtl: 86_400 } });
+      if (!response.ok) throw new Error(`Cleveland API ${skip}: ${response.status}`);
+      return await response.json() as ClevelandApiResponse;
+    }));
+    const seenIds = new Set<number>();
+    const pool = pageResponses.flatMap((payload) => (payload.data || []).filter((item) => {
+      const isValid = item.images?.web?.url
+        && item.id !== undefined
+        && item.culture?.some((entry) => entry.includes("China"))
+        && !seenIds.has(item.id);
+      if (isValid && item.id !== undefined) seenIds.add(item.id);
+      return isValid;
+    }));
+    if (pool.length === 0) return null;
+    const item = pool[((dayOffset % pool.length) + pool.length) % pool.length];
     if (!item?.images?.web?.url) return null;
     let poem = "";
     for (const insc of (item.inscriptions || [])) {
@@ -46,7 +67,7 @@ export async function fetchDailyChinesePainting(date: string): Promise<Cleveland
       }
     }
     return {
-      imageUrl: item.images.web.url,
+      imageUrl: coverImage1024x576(item.images.web.url),
       title: item.title || "中国传统山水画",
       culture: item.culture?.join(", ") || "中国",
       created: item.creation_date || "",

@@ -14,12 +14,12 @@ export interface AlarmEnv extends Record<string, unknown> {
 }
 
 const PAGE_URLS: Record<string, string> = {
-  sun: "assets/solar-terms/7.jpg",
-  cloud: "assets/solar-terms/16.jpg",
-  rain: "assets/solar-terms/2.jpg",
-  snow: "assets/solar-terms/20.jpg",
-  thunder: "assets/solar-terms/10.jpg",
-  fog: "assets/solar-terms/15.jpg"
+  sun: "solar-terms/7.jpg",
+  cloud: "solar-terms/16.jpg",
+  rain: "solar-terms/2.jpg",
+  snow: "solar-terms/20.jpg",
+  thunder: "solar-terms/10.jpg",
+  fog: "solar-terms/15.jpg"
 };
 
 export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promise<{ status: string; slot: string; pagesDeploymentId?: string }> {
@@ -46,7 +46,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
     const weather = await fetchWeather(config, target.date.replace(/-/g, ""));
     const holiday = await resolveHoliday(target.date);
     const term = solarTermFor(target.date);
-    const cleveland = await fetchDailyChinesePainting(target.date);
+    const cleveland = term ? null : await fetchDailyChinesePainting(target.date, target.slot);
     const poetry = term ? { content: term.poem, author: term.author, origin: term.origin }
       : cleveland?.poem ? { content: cleveland.poem, author: "", origin: cleveland.title }
       : { content: "", author: "", origin: "" };
@@ -54,6 +54,8 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
     const base = config.pagesBaseUrl.replace(/\/$/, "");
     const pageToken = String(env.PUBLIC_PAGE_TOKEN || "").trim();
     if (!pageToken) throw new Error("Missing PUBLIC_PAGE_TOKEN");
+    const pageAssetsBase = `${base}/page/${pageToken}/assets`;
+    const pageAssetUrl = (path: string) => `${pageAssetsBase}/${path}`;
     const context = {
       slot: target.slot,
       requestId,
@@ -65,7 +67,9 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
       weather,
       solarTerm: term,
       poetry,
-      imageUrl: term ? `${base}/${term.imageUrl}` : cleveland?.imageUrl || `${base}/${PAGE_URLS[category]}`,
+      imageUrl: term
+        ? pageAssetUrl(term.imageUrl.replace(/^assets\//, ""))
+        : cleveland?.imageUrl || pageAssetUrl(PAGE_URLS[category]),
       jumpUrl: `${base}/page/${pageToken}/detail`
     };
     const card = buildCard(context);
