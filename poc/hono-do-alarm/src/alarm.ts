@@ -102,7 +102,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
     if (!forceHourly || date || slot) await scheduler.fetch("https://do/release", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(target)
+      body: JSON.stringify({ ...target, requestId })
     });
     throw error;
   }

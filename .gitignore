@@ -1,16 +1,16 @@
 .env
-__pycache__/
-*.pyc
-.venv/
-venv/
+.dev.vars
+.dev.vars.*
+!poc/hono-do-alarm/.dev.vars.example
 .hooks/
 .claude/settings.local.json
 .claude/worktrees/
 .worktrees/
-public/
 _bmad-output/
 
+public/
 .wrangler/
+.wrangler-dryrun/
 poc/hono-do-alarm/.wrangler-home/
 poc/hono-do-alarm/node_modules/
 poc/hono-do-alarm/.envrc

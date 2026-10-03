@@ -25,7 +25,7 @@ export class SlotScheduler extends DurableObject<DoEnv> {
       return Response.json({ status: "sent" });
     }
     if (url.pathname === "/release") {
-      await this.store.release(date, slot);
+      await this.store.release(date, slot, body.requestId);
       return Response.json({ status: "released" });
     }
     if (url.pathname === "/notify") {

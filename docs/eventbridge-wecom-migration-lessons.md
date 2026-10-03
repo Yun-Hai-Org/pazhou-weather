@@ -1,8 +1,10 @@
 # EventBridge 调度迁移与企微运维通知：实践经验
 
+> **历史记录。** 本文仅保留 EventBridge 迁移时期的经验和决策，不再描述当前架构；当前系统是 `poc/hono-do-alarm` 中的 Cloudflare Worker + Durable Object + KV 方案。
+>
 > 整理时间：2026-08-08  
 > 仓库：[Yun-Hai-Org/pazhou-weather](https://github.com/Yun-Hai-Org/pazhou-weather)  
-> 相关：漏发根因见 [`weather-report-miss-analysis.md`](./weather-report-miss-analysis.md)；部署步骤见 [`../infra/eventbridge-weather/README.md`](../infra/eventbridge-weather/README.md)
+> 相关：漏发根因见 [`weather-report-miss-analysis.md`](./weather-report-miss-analysis.md)；EventBridge 部署步骤曾在已移除的 `infra/eventbridge-weather/README.md`。
 
 本文记录从「漏发治理 → EventBridge 调度 → 运维 markdown 通知」全过程中确认过的决策、踩坑与可复用做法，便于后续排障与轮换密钥。
 

@@ -13,15 +13,15 @@ Durable Object Alarm（SQLite-backed，06:05/17:05 Asia/Shanghai）
        1. 拉和风 API（now/24h/7d/warning/air/astronomy）
        2. Hono html 模板字面量渲染详情页
        3. 企微 template_card 推送（多 webhook）
-       4. Cloudflare Pages Direct Upload
-  → Pages 托管静态页（URL 不变）
+       4. 详情 HTML 写入 ASSETS KV
+  → Worker 通过 `/page/:token/detail` 与令牌保护的资产路由提供页面
 ```
 
 | 要点 | 说明 |
 |---|---|
 | 调度 | DO Alarm at-least-once，`alarm()` 内 catch 失败并自重新 `setAlarm()`，不依赖平台重试 |
 | 幂等 | DO SQLite 按 `date + am/pm` claim，同 slot 重复触发不重发 |
-| 降级 | Pages 上传失败不影响已完成企微推送；holiday/诗词不可用优雅降级 |
+| 降级 | ASSETS KV 写入失败不影响已完成企微推送；holiday/诗词不可用优雅降级 |
 | 配置 | 全部迁至 Worker `[vars]` + Secrets，移除 GitHub Secrets / AWS SSM / CloudFormation |
 
 ## 资源评估（免费计划）
@@ -33,7 +33,7 @@ Durable Object Alarm（SQLite-backed，06:05/17:05 Asia/Shanghai）
 | 4-6 个和风 API JSON.parse | ~2-5ms |
 | Hono 模板字面量渲染 ~100KB HTML | ~1-3ms |
 | 卡片 JSON.stringify | <1ms |
-| SHA-256（Pages 上传） | <1ms |
+| KV 写入（详情页 HTML） | <1ms |
 | 网络 I/O 等待 | 0（不占 CPU） |
 | **合计** | **~5-15ms** |
 
@@ -49,7 +49,7 @@ HTML ~100KB + JSON 累计 ~200KB + 卡片 ~1KB，峰值 <1MB。
 
 ### 子请求数（免费 50 个/次）
 
-和风 4-6 + holiday 1 + 诗词 1 + 企微 1-2 + Pages 上传 3-4 + DO 内部 fetch 3-4 ≈ **15-18**，余量充足。
+和风 4-6 + holiday 1 + 诗词 1 + 企微 1-2 + ASSETS KV 写入 1 + DO 内部 fetch 3-4 ≈ **12-15**，余量充足。
 
 ### 注意
 
@@ -111,7 +111,7 @@ CPU/内存大概率够，但有两个结构性风险：
 |---|---|---|
 | 调度可靠性 | best-effort，曾连续漏发 | at-least-once + 应用层自重排 |
 | 链路长度 | AWS → GitHub → CF Pages，多平台 | 单 Cloudflare Worker |
-| 失败模式 | PAT 过期、Pages 401、Cron 零调用 | 外部 API 失败可降级，Pages 失败不阻断推送 |
+| 失败模式 | PAT 过期、Pages 401、Cron 零调用 | 外部 API 失败可降级，ASSETS KV 写入失败不阻断推送 |
 | 运维面 | 3 平台 Secrets/IaC | 1 平台 wrangler.toml + secrets |
 | CPU 限制 | GHA 无限制 | DO Alarm 30s，纯 TS 渲染远低于上限 |
 

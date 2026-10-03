@@ -1,6 +1,6 @@
 # 天气预报漏发问题分析与改进建议
 
-> **架构更新（2026-08-08）：** 定时调度已迁至 **AWS EventBridge Scheduler**（见仓库根目录 README 与 `infra/eventbridge-weather/`）；下文仍保留调查当时基于 Cloudflare Worker Cron 的分析记录。
+> **历史记录。** 本文仅保留当时的调查结论，不再描述当前架构；当前系统是 `poc/hono-do-alarm` 中的 Cloudflare Worker + Durable Object + KV 方案，仓库已移除 `infra/eventbridge-weather/`。
 
 
 > 调查时间：2026-08-06（北京时间）  

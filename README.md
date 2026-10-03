@@ -1,104 +1,54 @@
-# 琶洲天气预报推送
+# Pazhou Weather Cloudflare Worker
 
-仓库：[Yun-Hai-Org/pazhou-weather](https://github.com/Yun-Hai-Org/pazhou-weather)
+广州琶洲天气预报推送系统。每天北京时间 06:05 / 17:05 调用天气 API，渲染令牌保护的详情页，写入 KV，并向企业微信推送图文卡片。
 
-每天北京时间 **06:05**、**17:05** 自动向企业微信群推送广州天气预报，采用 **template_card 图文卡片**（news_notice）展示摘要并跳转到手机端详情页，包括：
+## Current architecture
 
-- 卡片配图（和风官方图标，按未来 6 小时主导天气自动选择）
-- 小时预报 + 日出日落摘要
-- 点击跳转手机端详情页（7 板块完整信息）
+- **Runtime**: Cloudflare Worker + Hono (`poc/hono-do-alarm`)
+- **Scheduling and idempotency**: SQLite-backed Durable Object Alarm (`SlotScheduler`)
+- **Page and image storage**: `ASSETS` KV namespace
+- **Source assets**: [`assets/card/`](assets/card/) is source material for seeding weather icon data into KV
+- **Delivery**: WeCom template card plus `/page/:token/detail`
 
-## 架构
+The repository no longer contains the Python runtime, GitHub Actions weather workflow, AWS EventBridge IaC, or Jinja2 templates.
 
-- **定时**：AWS EventBridge Scheduler（`Asia/Shanghai`，北京 06:05 / 17:05）→ Lambda → GitHub `repository_dispatch`（`event_type: weather-report`）触发 Weather Report；也可手动 `workflow_dispatch`
-- **构建**：GHA 拉取和风天气 → Jinja2 渲染企业微信卡片 JSON 与详情页 HTML → 推送企业微信 → 部署到 Cloudflare Pages
-- **运维通知**：Weather Report 成功/失败均向 **dev 企业微信群**发送 markdown 模版消息（`WECOM_WEBHOOK_URL_DEV`）
-- **模板**：`templates/detail.html.j2`（详情页）、`templates/card.json.j2`（企业微信卡片）
-- **调度 IaC**：`infra/eventbridge-weather/`
+## Production configuration
 
-## 详情页
-
-由 `main.py` 使用 Jinja2 模板将和风天气 API 数据渲染为单文件静态 HTML（手机端优先、深色主题、内联 CSS、和风图标字体 CDN），经 GitHub Actions 部署到 **Cloudflare Pages**。详情页 7 板块：
-
-- 当前天气（大字）
-- 未来 24 小时逐时（横向滑动）
-- 未来 7 天预报
-- 空气质量
-- 日出日落 + 月相
-- 气象预警
-- 生活提醒（带伞、空调、衣着、紫外线、感冒、运动、旅游、舒适度、晾晒、防晒、交通、空气扩散）
-
-API Key 仅在后端使用，详情页数据内嵌、不在前端调接口，不暴露 QWEATHER_API_KEY。
-
-## 前置准备
-
-### 1. 和风天气
-
-1. 注册 [和风天气开发者](https://dev.qweather.com/)
-2. 创建项目，获取 **API Key** 和 **API Host**（形如 xxx.qweatherapi.com）
-3. 免费额度每月 5 万次，本项目每天约 16 次请求，远低于限额
-
-### 2. 企业微信群机器人
-
-通过 `APP_ENV` 区分本地开发与生产推送目标：
-
-| 环境 | `APP_ENV` | Webhook 变量 | 说明 |
-| ---- | --------- | ------------ | ---- |
-| 本地开发 | `dev`（默认） | `WECOM_WEBHOOK_URL_DEV` | 单个测试群 |
-| 生产（GitHub Actions） | `prod` | `WECOM_WEBHOOK_URL_PROD` | 多个正式群，英文逗号分隔 |
-
-1. 在企业微信群中添加「自定义机器人」
-2. 复制完整的 Webhook URL
-3. 本地填 `WECOM_WEBHOOK_URL_DEV`；生产在 GitHub Secret `WECOM_WEBHOOK_URL_PROD` 中配置多个 URL（英文逗号分隔）
-
-运维成功/失败通知与天气卡片共用 Secret `WECOM_WEBHOOK_URL_DEV`（完整 Webhook URL）。
-
-### 3. Cloudflare Pages
-
-在组织 [Yun-Hai-Org](https://github.com/Yun-Hai-Org) 或仓库 **Settings → Secrets and variables → Actions** 中配置：
-
-| 类型 | 名称 | 说明 |
-| ---- | ---- | ---- |
-| Secret | QWEATHER_API_KEY | 和风天气 API Key |
-| Secret | QWEATHER_API_HOST | 和风天气 API Host |
-| Secret | WECOM_WEBHOOK_URL_PROD | 生产环境企业微信 Webhook（多个用英文逗号分隔） |
-| Secret | WECOM_WEBHOOK_URL_DEV | 开发/测试群 Webhook（天气卡片 + 成败运维通知） |
-| Secret | CLOUDFLARE_API_TOKEN | Cloudflare API Token（Pages 部署权限） |
-| Secret | CLOUDFLARE_ACCOUNT_ID | Cloudflare Account ID |
-| Variable | CF_PAGES_URL | Cloudflare Pages 站点 URL（卡片跳转地址） |
-| Variable | CF_PAGES_PROJECT | Cloudflare Pages 项目名称 |
-
-### 4. AWS EventBridge 调度
-
-见 [`infra/eventbridge-weather/README.md`](infra/eventbridge-weather/README.md)：部署 CloudFormation、PAT 存 SSM SecureString、手动 Invoke Lambda 验证。
-
-## 本地试跑
+Non-sensitive runtime settings live in [`poc/hono-do-alarm/wrangler.toml`](poc/hono-do-alarm/wrangler.toml). Sensitive values must be configured as Cloudflare Worker Secrets; do not put them in Git:
 
 ```bash
-uv sync
-# 复制 .env.example 为 .env 后编辑：APP_ENV=dev，填写 QWEATHER_*、WECOM_WEBHOOK_URL_DEV、PAGES_BASE_URL
-
-./run.sh
+cd poc/hono-do-alarm
+npx wrangler secret put QWEATHER_API_KEY
+npx wrangler secret put WECOM_WEBHOOK_URL_PROD
+npx wrangler secret put WECOM_WEBHOOK_URL_DEV
+npx wrangler secret put PUBLIC_PAGE_TOKEN
 ```
 
-`run.sh` 会通过 `uv run --env-file .env` 自动加载配置，默认 `APP_ENV=dev`，消息仅发到测试群。
+Set these secrets in the target Cloudflare environment before deploy. Local-only copies belong in `.dev.vars`, which is ignored by Git.
 
-## GitHub Actions
+## Deploy
 
-Weather Report 由 EventBridge → `repository_dispatch` 定时触发，也可手动 `workflow_dispatch`；构建后将 `public/` 部署到 Cloudflare Pages，并向 dev 群发送成功/失败运维通知。
+```bash
+cd poc/hono-do-alarm
+npx wrangler deploy
+curl -X POST https://<worker-domain>/schedule
+```
 
-**Secret 迁移（一次性）：** 将原 `WECOM_WEBHOOK_URL` 的值迁移到 `WECOM_WEBHOOK_URL_PROD`，然后删除旧 Secret。workflow 已设置 `APP_ENV=prod`，推送走生产多群配置。
+## Schedule
 
-## 定时说明
+The Worker cron triggers are UTC `5 22 * * *` and `5 9 * * *`, corresponding to Asia/Shanghai 06:05 and 17:05. The Durable Object claims a `date + slot`, runs the alarm path, and prevents duplicate sends for that slot.
 
-| 北京时间 | Scheduler（Asia/Shanghai） | 触发方式 |
-| -------- | -------------------------- | -------- |
-| 06:05 | `cron(5 6 * * ? *)` | EventBridge → Lambda → `repository_dispatch` |
-| 17:05 | `cron(5 17 * * ? *)` | EventBridge → Lambda → `repository_dispatch` |
+## Verify
 
-## 费用
+```bash
+cd poc/hono-do-alarm
+npm run typecheck
+npx wrangler deploy --dry-run --outdir /tmp/hono-do-alarm-dryrun
+curl http://127.0.0.1:8787/health
+```
 
-- 和风天气：每月 5 万次内免费
-- GitHub Actions / Cloudflare Pages：免费额度内免费
-- 企业微信机器人：免费
-- EventBridge Scheduler / Lambda：AWS 免费额度内通常可覆盖本项目调用量
+Use `npx wrangler dev` for the local health check.
+
+## Cloudflare Pages rollback status
+
+The existing Cloudflare Pages resources may remain temporarily for rollback or assets until explicitly migrated. This repository does not use Cloudflare Pages Direct Upload.

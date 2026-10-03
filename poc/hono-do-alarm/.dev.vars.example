@@ -1,0 +1,13 @@
+# Copy to .dev.vars for local verification. Never commit .dev.vars.
+APP_ENV=dev
+QWEATHER_API_HOST=mx3yfu7e7k.re.qweatherapi.com
+QWEATHER_API_KEY=replace-with-local-api-key
+CITY_NAME=广州·海珠琶洲
+CITY_LOCATION=101280108
+CITY_COORDS=113.384,23.101
+PUBLIC_BASE_URL=http://127.0.0.1:8787
+PUBLIC_PAGE_TOKEN=replace-with-local-page-token
+WECOM_WEBHOOK_URL_PROD=https://example.invalid/wecom-prod
+WECOM_WEBHOOK_URL_DEV=https://example.invalid/wecom-dev
+WECOM_SKIP_SEND=1
+FORCE_HOURLY_RUN=0
