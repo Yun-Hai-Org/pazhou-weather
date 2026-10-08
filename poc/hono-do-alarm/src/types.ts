@@ -44,6 +44,8 @@ export interface SolarTermMeta {
   eveningPoem?: string;
   author: string;
   origin: string;
+  eveningAuthor?: string;
+  eveningOrigin?: string;
 }
 
 export interface SolarTerm extends SolarTermMeta {
