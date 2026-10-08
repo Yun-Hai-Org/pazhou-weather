@@ -41,6 +41,7 @@ export interface Poetry {
 export interface SolarTermMeta {
   name: string;
   poem: string;
+  eveningPoem?: string;
   author: string;
   origin: string;
 }

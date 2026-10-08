@@ -45,7 +45,7 @@ export async function runAlarm(env: AlarmEnv, date?: string, slot?: Slot): Promi
   try {
     const weather = await fetchWeather(config, target.date.replace(/-/g, ""));
     const holiday = await resolveHoliday(target.date);
-    const term = solarTermFor(target.date);
+    const term = solarTermFor(target.date, target.slot);
     const cleveland = term ? null : await fetchDailyChinesePainting(target.date, target.slot);
     const poetry = term ? { content: term.poem, author: term.author, origin: term.origin }
       : cleveland?.poem ? { content: cleveland.poem, author: "", origin: cleveland.title }

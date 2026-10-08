@@ -27,21 +27,22 @@ export function buildCard(context: ReportContext): Record<string, unknown> {
   const now = context.weather.now;
   const line1 = `${weatherEmoji(now.text)} ${now.text} ${now.temp}°C | 体感 ${now.feelsLike}°C`;
   const line2 = `💧 湿度 ${now.humidity}% | 🌬️ ${now.windDir} ${now.windScale}级`;
-  const items: Array<{ title: string; desc: string }> = [{
-    title: "🌡️ 天气实况",
-    desc: truncate(`${line1}\n${line2}`)
-  }];
-  items.push({ title: "☂️ 出行提醒", desc: umbrellaAdvice(context.weather.hourly) });
-  const hourly = context.weather.hourly.slice(0, 3).map((item) => {
-    return `🕐${hourOnly(item.fxTime)} ${weatherEmoji(item.text)}${item.text} ${item.temp}°C`;
-  }).join("\n");
-  if (hourly) items.push({ title: "⏭️ 未来3小时", desc: hourly });
+  const items: Array<{ title: string; desc: string }> = [];
   if (context.poetry.content) {
     items.push({
       title: context.solarTerm ? "🎋 节气诗句" : "📖 画作题诗",
       desc: truncate(`${context.poetry.content}${context.poetry.author ? ` —— ${context.poetry.author}` : ""}${context.poetry.origin ? `《${context.poetry.origin}》` : ""}`)
     });
   }
+  items.push({
+    title: "🌡️ 天气实况",
+    desc: truncate(`${line1}\n${line2}`)
+  });
+  items.push({ title: "☂️ 出行提醒", desc: umbrellaAdvice(context.weather.hourly) });
+  const hourly = context.weather.hourly.slice(0, 3).map((item) => {
+    return `🕐${hourOnly(item.fxTime)} ${weatherEmoji(item.text)}${item.text} ${item.temp}°C`;
+  }).join("\n");
+  if (hourly) items.push({ title: "⏭️ 未来3小时", desc: hourly });
   return {
     card_type: "news_notice",
     source: { icon_url: "https://openweathermap.org/img/wn/03d@2x.png", desc: "天气预报", desc_color: 0 },

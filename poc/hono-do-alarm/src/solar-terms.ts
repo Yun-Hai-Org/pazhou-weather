@@ -1,4 +1,4 @@
-import type { SolarTerm, SolarTermMeta } from "./types";
+import type { Slot, SolarTerm, SolarTermMeta } from "./types";
 
 export const SOLAR_TERMS: SolarTermMeta[] = [
   { name: "立春", poem: "春风如贵客，一到便繁华。", author: "袁枚", origin: "春风" },
@@ -27,7 +27,7 @@ export const SOLAR_TERMS: SolarTermMeta[] = [
   { name: "大寒", poem: "大寒岁底庆团圆。", author: "陆游", origin: "大寒出江陵西门" }
 ];
 
-export function solarTermFor(date: string): SolarTerm | null {
+export function solarTermFor(date: string, slot: Slot = "am"): SolarTerm | null {
   // Approximate fixed dates in the current century. Exact astronomical dates vary by at most one day.
   const ranges: Array<[string, number]> = [
     ["02-04", 0], ["02-19", 1], ["03-05", 2], ["03-20", 3], ["04-05", 4], ["04-20", 5],
@@ -39,5 +39,11 @@ export function solarTermFor(date: string): SolarTerm | null {
   const match = ranges.find(([day]) => day === monthDay);
   if (!match) return null;
   const index = match[1];
-  return { termIndex: index, ...SOLAR_TERMS[index], imageUrl: `assets/solar-terms/${index + 1}.jpg` };
+  const meta = SOLAR_TERMS[index];
+  return {
+    termIndex: index,
+    ...meta,
+    poem: slot === "pm" ? meta.eveningPoem ?? meta.poem : meta.poem,
+    imageUrl: `assets/solar-terms/${index + 1}.jpg`
+  };
 }
