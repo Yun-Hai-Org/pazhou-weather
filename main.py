@@ -1,3 +1,4 @@
+import binascii
 import gzip
 import html
 import json
@@ -6,6 +7,7 @@ import random
 import re
 import shutil
 import time
+import uuid
 from typing import Any
 import sys
 import urllib.error
@@ -671,42 +673,109 @@ def build_image_prompt(now: dict[str, Any], astronomy: dict[str, Any]) -> str:
     )
 
 
+IMAGE_GEN_MODEL = "@cf/black-forest-labs/flux-2-klein-4b"
+IMAGE_GEN_WIDTH = 1792
+IMAGE_GEN_HEIGHT = 1024
+
+
+def workers_ai_image_url(account_id: str) -> str:
+    return (
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
+        f"/ai/run/{IMAGE_GEN_MODEL}"
+    )
+
+
+def encode_flux_multipart(prompt: str, width: int, height: int, seed: int) -> tuple[bytes, str]:
+    boundary = uuid.uuid4().hex
+    fields = (
+        ("prompt", prompt),
+        ("width", str(width)),
+        ("height", str(height)),
+        ("seed", str(seed)),
+    )
+    chunks: list[bytes] = []
+    for name, value in fields:
+        chunks.append(
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n".encode()
+        )
+    chunks.append(f"--{boundary}--\r\n".encode())
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def decode_workers_ai_image(body: bytes, content_type: str) -> bytes:
+    ctype = (content_type or "").split(";")[0].strip().lower()
+    if ctype.startswith("image/"):
+        if not body:
+            raise RuntimeError("empty image response")
+        return body
+    try:
+        payload = json.loads(body.decode())
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("image response is not json or image bytes") from exc
+    if payload.get("success") is False:
+        raise RuntimeError(f"workers ai error: {payload.get('errors')}")
+    result = payload.get("result", payload)
+    image = result.get("image") if isinstance(result, dict) else result
+    if not image or not isinstance(image, str):
+        raise RuntimeError("workers ai response missing image")
+    if image.startswith("data:") and "," in image:
+        image = image.split(",", 1)[1]
+    pad = (-len(image)) % 4
+    if pad:
+        image += "=" * pad
+    return binascii.a2b_base64(image)
+
+
 def generate_weather_image(
     now: dict[str, Any], astronomy: dict[str, Any], out_path: Path
 ) -> bool:
-    """调用 Pollinations.ai GET 接口生成图像，指数退避重试 10 次，成功写入 out_path 返回 True。"""
-    api_base = os.environ.get(
-        "IMAGE_GEN_API_BASE", "https://image.pollinations.ai"
-    ).strip() or "https://image.pollinations.ai"
-    model = os.environ.get("IMAGE_GEN_MODEL", "flux").strip()
+    """调用 Workers AI flux-2-klein-4b（经 AI Gateway），成功写入 out_path 返回 True。"""
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    gateway_id = os.environ.get("CF_AI_GATEWAY_ID", "default").strip() or "default"
+    if not account_id or not api_token:
+        print("⚠️  未配置 CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN，回退到静态配图")
+        return False
     prompt = build_image_prompt(now, astronomy)
-    encoded_prompt = urllib.parse.quote(prompt)
     seed = random.randint(0, 999999)
-    url = (
-        f"{api_base.rstrip('/')}/prompt/{encoded_prompt}"
-        f"?width=1792&height=1024&model={urllib.parse.quote(model)}&seed={seed}"
+    url = workers_ai_image_url(account_id)
+    body, content_type = encode_flux_multipart(
+        prompt, IMAGE_GEN_WIDTH, IMAGE_GEN_HEIGHT, seed
     )
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": content_type,
+        "cf-aig-gateway-id": gateway_id,
+        "cf-aig-skip-cache": "true",
+    }
     max_retries = 10
     base_delay = 2
     max_delay = 60
     for attempt in range(1, max_retries + 1):
         try:
             request = urllib.request.Request(
-                url, headers={"User-Agent": "Mozilla/5.0"}, method="GET"
+                url, data=body, headers=headers, method="POST"
             )
             with urllib.request.urlopen(request, timeout=120) as response:
-                content_type = response.headers.get("Content-Type", "")
-                if not content_type.startswith("image/"):
-                    raise RuntimeError(f"unexpected content-type: {content_type}")
-                out_path.write_bytes(response.read())
+                raw = response.read()
+                image_bytes = decode_workers_ai_image(
+                    raw, response.headers.get("Content-Type", "")
+                )
+                out_path.write_bytes(image_bytes)
             return True
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            err: BaseException = RuntimeError(f"HTTP {exc.code}: {detail}")
         except Exception as exc:
-            if attempt < max_retries:
-                delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
-                print(f"⚠️  图像生成第 {attempt}/{max_retries} 次失败（{exc}），{delay}s 后重试...")
-                time.sleep(delay)
-            else:
-                print(f"⚠️  图像生成 {max_retries} 次均失败（{exc}），回退到静态配图")
+            err = exc
+        if attempt < max_retries:
+            delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+            print(f"⚠️  图像生成第 {attempt}/{max_retries} 次失败（{err}），{delay}s 后重试...")
+            time.sleep(delay)
+        else:
+            print(f"⚠️  图像生成 {max_retries} 次均失败（{err}），回退到静态配图")
     return False
 
 
